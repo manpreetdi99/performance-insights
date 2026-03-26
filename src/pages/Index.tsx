@@ -127,7 +127,7 @@ const Index = () => {
           {/* TAB 3: Call Detail */}
           <TabsContent value="detail">
             {selectedCall ? (
-              <CallDetail call={selectedCall} onBack={() => setSelectedCall(null)} />
+              <CallDetail call={selectedCall} onBack={() => setActiveTab("calls")} />
             ) : (
               <div className="flex flex-col items-center justify-center py-20 text-center">
                 <Phone className="h-10 w-10 text-muted-foreground mb-3" />
