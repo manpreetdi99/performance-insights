@@ -120,7 +120,7 @@ const Index = () => {
                 <h2 className="text-sm font-semibold text-foreground">All Calls</h2>
                 <p className="text-xs text-muted-foreground">Λίστα κλήσεων ταξινομημένη κατά χρόνο — κλικ για λεπτομέρειες</p>
               </div>
-              <CallsList calls={callRecords} onSelectCall={(call) => setSelectedCall(call)} />
+              <CallsList calls={callRecords} onSelectCall={(call) => { setSelectedCall(call); setActiveTab("detail"); }} />
             </div>
           </TabsContent>
 
