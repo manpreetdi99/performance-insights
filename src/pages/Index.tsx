@@ -17,6 +17,7 @@ const Index = () => {
   const [isRunning, setIsRunning] = useState(false);
   const [totalTime, setTotalTime] = useState(0);
   const [selectedCall, setSelectedCall] = useState<CallRecord | null>(null);
+  const [activeTab, setActiveTab] = useState("queries");
 
   const callRecords = useMemo(() => generateCallRecords(35), []);
 
