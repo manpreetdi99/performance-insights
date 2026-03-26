@@ -64,7 +64,7 @@ const Index = () => {
       </header>
 
       <main className="container max-w-7xl mx-auto px-4 py-6">
-        <Tabs defaultValue="queries" className="w-full">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="bg-muted border border-border mb-6">
             <TabsTrigger value="queries" className="gap-1.5 text-xs">
               <Database className="h-3.5 w-3.5" /> Queries
