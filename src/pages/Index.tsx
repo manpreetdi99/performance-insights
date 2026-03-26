@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Activity, BarChart3, Phone, Database } from "lucide-react";
+import { Activity, BarChart3, Phone, Database, MapPin } from "lucide-react";
 import QueryEditor from "@/components/QueryEditor";
 import ResultsTable from "@/components/ResultsTable";
 import type { BenchmarkResult } from "@/components/ResultsTable";
@@ -8,9 +8,20 @@ import BenchmarkCharts from "@/components/BenchmarkCharts";
 import StatsCards from "@/components/StatsCards";
 import CallsList from "@/components/CallsList";
 import CallDetail from "@/components/CallDetail";
+import CallsFilter, { type CallFilters } from "@/components/CallsFilter";
+import CallsSummary from "@/components/CallsSummary";
+import CallsMap from "@/components/CallsMap";
 import { runBenchmark } from "@/lib/benchmarkEngine";
 import { generateCallRecords, type CallRecord } from "@/lib/callData";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+const defaultFilters: CallFilters = {
+  operator: "all",
+  status: "all",
+  technology: "all",
+  region: "all",
+  callType: "all",
+};
 
 const Index = () => {
   const [results, setResults] = useState<BenchmarkResult[]>([]);
@@ -18,8 +29,20 @@ const Index = () => {
   const [totalTime, setTotalTime] = useState(0);
   const [selectedCall, setSelectedCall] = useState<CallRecord | null>(null);
   const [activeTab, setActiveTab] = useState("queries");
+  const [filters, setFilters] = useState<CallFilters>(defaultFilters);
 
   const callRecords = useMemo(() => generateCallRecords(35), []);
+
+  const filteredCalls = useMemo(() => {
+    return callRecords.filter((c) => {
+      if (filters.operator !== "all" && c.operator !== filters.operator) return false;
+      if (filters.status !== "all" && c.status !== filters.status) return false;
+      if (filters.technology !== "all" && c.technology !== filters.technology) return false;
+      if (filters.region !== "all" && c.region !== filters.region) return false;
+      if (filters.callType !== "all" && c.callType !== filters.callType) return false;
+      return true;
+    });
+  }, [callRecords, filters]);
 
   const handleRunQueries = async (queries: string[]) => {
     setIsRunning(true);
@@ -72,6 +95,9 @@ const Index = () => {
             <TabsTrigger value="calls" className="gap-1.5 text-xs">
               <Phone className="h-3.5 w-3.5" /> All Calls
             </TabsTrigger>
+            <TabsTrigger value="map" className="gap-1.5 text-xs">
+              <MapPin className="h-3.5 w-3.5" /> Map
+            </TabsTrigger>
             <TabsTrigger value="detail" className="gap-1.5 text-xs" disabled={!selectedCall}>
               <BarChart3 className="h-3.5 w-3.5" /> Call Detail
             </TabsTrigger>
@@ -114,17 +140,44 @@ const Index = () => {
           </TabsContent>
 
           {/* TAB 2: All Calls */}
-          <TabsContent value="calls">
+          <TabsContent value="calls" className="space-y-4">
+            <div className="bg-card border border-border rounded-lg p-4">
+              <CallsFilter calls={callRecords} filters={filters} onFiltersChange={setFilters} />
+            </div>
+
+            <CallsSummary calls={filteredCalls} />
+
             <div className="bg-card border border-border rounded-lg overflow-hidden">
-              <div className="px-4 py-3 border-b border-border">
-                <h2 className="text-sm font-semibold text-foreground">All Calls</h2>
-                <p className="text-xs text-muted-foreground">Λίστα κλήσεων ταξινομημένη κατά χρόνο — κλικ για λεπτομέρειες</p>
+              <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-semibold text-foreground">All Calls</h2>
+                  <p className="text-xs text-muted-foreground">
+                    {filteredCalls.length} κλήσεις {filteredCalls.length !== callRecords.length && `(από ${callRecords.length} συνολικά)`}
+                  </p>
+                </div>
               </div>
-              <CallsList calls={callRecords} onSelectCall={(call) => { setSelectedCall(call); setActiveTab("detail"); }} />
+              <CallsList
+                calls={filteredCalls}
+                onSelectCall={(call) => {
+                  setSelectedCall(call);
+                  setActiveTab("detail");
+                }}
+              />
             </div>
           </TabsContent>
 
-          {/* TAB 3: Call Detail */}
+          {/* TAB 3: Map */}
+          <TabsContent value="map">
+            <CallsMap
+              calls={filteredCalls}
+              onSelectCall={(call) => {
+                setSelectedCall(call);
+                setActiveTab("detail");
+              }}
+            />
+          </TabsContent>
+
+          {/* TAB 4: Call Detail */}
           <TabsContent value="detail">
             {selectedCall ? (
               <CallDetail call={selectedCall} onBack={() => setActiveTab("calls")} />
