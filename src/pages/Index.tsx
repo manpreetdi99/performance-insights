@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Activity, BarChart3, Phone, Database, MapPin } from "lucide-react";
+import { toast } from "@/hooks/use-toast";
 import QueryEditor from "@/components/QueryEditor";
 import ResultsTable from "@/components/ResultsTable";
 import type { BenchmarkResult } from "@/types/benchmark";
