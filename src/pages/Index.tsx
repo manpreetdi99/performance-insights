@@ -14,7 +14,7 @@ import CallsSummary from "@/components/CallsSummary";
 import CallsMap from "@/components/CallsMap";
 import { generateCallRecords, type CallRecord } from "@/lib/callData";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ApiClientError, fetchDatabases, runBenchmarkApi } from "@/lib/api";
+import { ApiClientError, fetchCollectionNames, fetchDatabases, runBenchmarkApi } from "@/lib/api";
 
 const defaultFilters: CallFilters = {
   operator: "all",
@@ -48,6 +48,8 @@ const formatApiError = (error: unknown, fallbackTitle: string) => {
 const Index = () => {
   const [databases, setDatabases] = useState<string[]>([]);
   const [selectedDatabase, setSelectedDatabase] = useState("");
+  const [collectionNames, setCollectionNames] = useState<string[]>([]);
+  const [collectionsLoading, setCollectionsLoading] = useState(false);
 
   const [results, setResults] = useState<BenchmarkResult[]>([]);
   const [isRunning, setIsRunning] = useState(false);
@@ -77,6 +79,35 @@ const Index = () => {
 
     loadDatabases();
   }, []);
+
+  useEffect(() => {
+    const loadCollections = async () => {
+      if (!selectedDatabase) {
+        setCollectionNames([]);
+        return;
+      }
+
+      setCollectionsLoading(true);
+
+      try {
+        const names = await fetchCollectionNames(selectedDatabase);
+        setCollectionNames(names);
+      } catch (err: any) {
+        console.error("Failed to fetch collections:", err);
+        setCollectionNames([]);
+        const toastError = formatApiError(err, "Collections Fetch Failed");
+        toast({
+          title: toastError.title,
+          description: toastError.description,
+          variant: "destructive",
+        });
+      } finally {
+        setCollectionsLoading(false);
+      }
+    };
+
+    loadCollections();
+  }, [selectedDatabase]);
 
   const filteredCalls = useMemo(() => {
     return callRecords.filter((c) => {
@@ -181,7 +212,12 @@ const Index = () => {
                 </p>
               </div>
 
-              <QueryEditor onRunQueries={handleRunQueries} isRunning={isRunning} />
+              <QueryEditor
+                onRunQueries={handleRunQueries}
+                isRunning={isRunning}
+                collectionNames={collectionNames}
+                collectionsLoading={collectionsLoading}
+              />
             </section>
 
             {isRunning && (

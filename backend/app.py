@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from db import get_connection, get_available_databases
@@ -65,5 +65,26 @@ def run_benchmark(req: QueryRequest):
             "totalTime": total_time
         }
 
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/collections")
+def list_collections(database: str = Query(..., min_length=1)):
+    try:
+        conn = get_connection(database)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT DISTINCT CollectionName
+            FROM filelist
+            WHERE CollectionName IS NOT NULL
+            ORDER BY CollectionName
+        """)
+
+        rows = cursor.fetchall()
+        conn.close()
+
+        return {"collections": [row[0] for row in rows if row[0]]}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
