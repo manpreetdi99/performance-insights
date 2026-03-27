@@ -77,8 +77,14 @@ const Index = () => {
       const { results: newResults, totalTime: time } = await runBenchmarkApi(selectedDatabase, queries);
       setResults(newResults);
       setTotalTime(time);
-    } catch (err) {
-      console.error(err);
+      toast({ title: "Benchmark Complete", description: `${newResults.length} queries executed in ${time}ms` });
+    } catch (err: any) {
+      console.error("Benchmark error:", err);
+      toast({
+        title: "Benchmark Failed",
+        description: err.message || "Unknown error",
+        variant: "destructive",
+      });
     } finally {
       setIsRunning(false);
     }
