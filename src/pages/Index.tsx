@@ -119,11 +119,11 @@ const Index = () => {
         <div className="container max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center glow-primary">
-              <Activity className="h-4 w-4 text-primary" />
+              <Activity className="h-4 w-4 text-red-500" />
             </div>
             <div>
               <h1 className="text-sm font-bold text-foreground tracking-tight">
-                SmartBench<span className="text-primary">Analytics</span>
+                FASMETRICS <span className="text-red-500">Analytics</span>
               </h1>
               <p className="text-[10px] text-muted-foreground uppercase tracking-widest">
                 Network Quality Benchmarking
