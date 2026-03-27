@@ -26,9 +26,9 @@ interface BuilderQuery {
 }
 
 const SAMPLE_QUERIES = [
-  "SELECT region, AVG(latency_ms) as avg_latency, COUNT(*) as samples FROM network_measurements GROUP BY region ORDER BY avg_latency",
-  "SELECT operator, test_type, PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY throughput_mbps) as p95_throughput FROM benchmarks GROUP BY operator, test_type",
-  "SELECT DATE_TRUNC('hour', measured_at) as hour, AVG(download_speed) as avg_dl, AVG(upload_speed) as avg_ul FROM speed_tests WHERE measured_at > NOW() - INTERVAL '24 hours' GROUP BY hour ORDER BY hour",
+  "SELECT TOP 100 * FROM CallTable ORDER BY StartTime DESC",
+  "SELECT Operator, COUNT(*) as TotalCalls, SUM(CASE WHEN CallStatus = 'Dropped' THEN 1 ELSE 0 END) as DroppedCalls FROM CallTable GROUP BY Operator",
+  "SELECT Technology, AVG(DL_Throughput) as Avg_DL, AVG(UL_Throughput) as Avg_UL, COUNT(*) as Samples FROM CallTable GROUP BY Technology ORDER BY Avg_DL DESC",
 ];
 
 const AVAILABLE_FIELDS = [
