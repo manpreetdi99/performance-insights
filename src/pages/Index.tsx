@@ -14,7 +14,7 @@ import CallsSummary from "@/components/CallsSummary";
 import CallsMap from "@/components/CallsMap";
 import { generateCallRecords, type CallRecord } from "@/lib/callData";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { fetchDatabases, runBenchmarkApi } from "@/lib/api";
+import { ApiClientError, fetchDatabases, runBenchmarkApi } from "@/lib/api";
 
 const defaultFilters: CallFilters = {
   operator: "all",
@@ -22,6 +22,27 @@ const defaultFilters: CallFilters = {
   technology: "all",
   region: "all",
   callType: "all",
+};
+
+const formatApiError = (error: unknown, fallbackTitle: string) => {
+  if (error instanceof ApiClientError) {
+    return {
+      title: `${fallbackTitle} [${error.code}]`,
+      description: `${error.message} — ${error.hint}`,
+    };
+  }
+
+  if (error instanceof Error) {
+    return {
+      title: fallbackTitle,
+      description: error.message,
+    };
+  }
+
+  return {
+    title: fallbackTitle,
+    description: "Unknown error",
+  };
 };
 
 const Index = () => {
@@ -45,9 +66,10 @@ const Index = () => {
         if (dbs.length > 0) setSelectedDatabase(dbs[0]);
       } catch (err: any) {
         console.error("Failed to fetch databases:", err);
+        const toastError = formatApiError(err, "Database Connection Error");
         toast({
-          title: "Database Connection Error",
-          description: `Cannot connect to backend: ${err.message}. Make sure your Python server is running on localhost:8000`,
+          title: toastError.title,
+          description: toastError.description,
           variant: "destructive",
         });
       }
@@ -80,9 +102,10 @@ const Index = () => {
       toast({ title: "Benchmark Complete", description: `${newResults.length} queries executed in ${time}ms` });
     } catch (err: any) {
       console.error("Benchmark error:", err);
+      const toastError = formatApiError(err, "Benchmark Failed");
       toast({
-        title: "Benchmark Failed",
-        description: err.message || "Unknown error",
+        title: toastError.title,
+        description: toastError.description,
         variant: "destructive",
       });
     } finally {
@@ -153,6 +176,9 @@ const Index = () => {
                     </option>
                   ))}
                 </select>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  If the list is empty, check the toast error code. <span className="font-medium">NET-001</span> means the preview cannot reach your local Python server on <span className="font-medium">localhost:8000</span>.
+                </p>
               </div>
 
               <QueryEditor onRunQueries={handleRunQueries} isRunning={isRunning} />
