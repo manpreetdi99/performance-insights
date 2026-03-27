@@ -18,6 +18,78 @@ class QueryRequest(BaseModel):
     database: str
     queries: list[str]
 
+
+@app.get("/api/calls")
+def list_calls(
+    database: str = Query(..., min_length=1),
+    collection: str = Query(..., min_length=1),
+    location: str = Query(..., min_length=1),
+):
+    try:
+        conn = get_connection(database)
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT
+                CA.SessionId,
+                CA.callStatus AS status,
+                DF.CollectionName,
+                DF.ASideLocation AS Location,
+                POS.Latitude AS latitude,
+                POS.Longitude AS longitude
+            FROM CallAnalysis CA
+            LEFT JOIN FileList DF ON CA.FileId = DF.FileId
+            LEFT JOIN Position POS ON CA.PosId = POS.PosId
+            LEFT JOIN Sessions S ON S.SessionId = CA.SessionId
+            WHERE DF.ASideLocation = ?
+              AND DF.CollectionName = ?
+              AND S.Valid = 1
+            """,
+            (location, collection),
+        )
+
+        columns = [col[0] for col in cursor.description] if cursor.description else []
+        rows = cursor.fetchall() if cursor.description else []
+
+        data = []
+        for row in rows:
+            data.append({columns[idx]: row[idx] for idx in range(len(columns))})
+
+        conn.close()
+
+        return {"rows": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/locations")
+def list_locations(
+    database: str = Query(..., min_length=1),
+    collection: str = Query(..., min_length=1),
+):
+    try:
+        conn = get_connection(database)
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT DISTINCT ASideLocation
+            FROM FileList
+            WHERE CollectionName = ?
+              AND ASideLocation IS NOT NULL
+            ORDER BY ASideLocation
+            """,
+            (collection,),
+        )
+
+        rows = cursor.fetchall()
+        conn.close()
+
+        return {"locations": [row[0] for row in rows if row[0]]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/databases")
 def list_databases():
     try:
