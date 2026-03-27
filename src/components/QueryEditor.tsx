@@ -63,10 +63,10 @@ const AVAILABLE_TABLES = [
 ];
 
 const defaultBuilder: BuilderQuery = {
-  selectFields: ["region", "AVG(latency_ms)"],
-  fromTable: "network_measurements",
+  selectFields: ["Operator", "AVG(DL_Throughput)"],
+  fromTable: "CallTable",
   whereClause: "",
-  groupByClause: "region",
+  groupByClause: "Operator",
 };
 
 function buildQueryString(b: BuilderQuery): string {
