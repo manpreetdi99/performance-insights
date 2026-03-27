@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Activity, BarChart3, Phone, Database, MapPin } from "lucide-react";
+import { toast } from "@/hooks/use-toast";
 import QueryEditor from "@/components/QueryEditor";
 import ResultsTable from "@/components/ResultsTable";
 import type { BenchmarkResult } from "@/types/benchmark";
@@ -42,8 +43,13 @@ const Index = () => {
         const dbs = await fetchDatabases();
         setDatabases(dbs);
         if (dbs.length > 0) setSelectedDatabase(dbs[0]);
-      } catch (err) {
-        console.error(err);
+      } catch (err: any) {
+        console.error("Failed to fetch databases:", err);
+        toast({
+          title: "Database Connection Error",
+          description: `Cannot connect to backend: ${err.message}. Make sure your Python server is running on localhost:8000`,
+          variant: "destructive",
+        });
       }
     };
 
@@ -71,8 +77,14 @@ const Index = () => {
       const { results: newResults, totalTime: time } = await runBenchmarkApi(selectedDatabase, queries);
       setResults(newResults);
       setTotalTime(time);
-    } catch (err) {
-      console.error(err);
+      toast({ title: "Benchmark Complete", description: `${newResults.length} queries executed in ${time}ms` });
+    } catch (err: any) {
+      console.error("Benchmark error:", err);
+      toast({
+        title: "Benchmark Failed",
+        description: err.message || "Unknown error",
+        variant: "destructive",
+      });
     } finally {
       setIsRunning(false);
     }
