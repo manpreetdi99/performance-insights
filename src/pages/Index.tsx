@@ -11,6 +11,7 @@ import CallDetail from "@/components/CallDetail";
 import CallsMap from "@/components/CallsMap";
 import type { CallRecord } from "@/lib/callData";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import {
   ApiClientError,
   fetchAllCalls,
@@ -52,19 +53,24 @@ const normalizeStatus = (status: string | null | undefined): CallRecord["status"
 const mapAllCallsRows = (rows: AllCallsRow[]): CallRecord[] => {
   return rows.map((row, index) => {
     const status = normalizeStatus(row.status);
+    const startIso = row.callStartTimeStamp
+      ? new Date(row.callStartTimeStamp).toISOString()
+      : new Date().toISOString();
+    const durationSeconds = row.callDuration != null ? Number(row.callDuration) : 0;
+    const endIso = new Date(new Date(startIso).getTime() + durationSeconds * 1000).toISOString();
 
     return {
       id: `session-${row.SessionId}-${index}`,
       callId: row.SessionId,
-      startTime: new Date().toISOString(),
-      endTime: new Date().toISOString(),
-      duration_s: 0,
+      startTime: startIso,
+      endTime: endIso,
+      duration_s: durationSeconds,
       operator: "N/A",
       region: row.Location || "Unknown",
-      technology: "N/A",
-      callType: "Session",
+      technology: row.technology || "N/A",
+      callType: row.callType || "Session",
       status,
-      setupTime_ms: 0,
+      setupTime_ms: row.setupTime != null ? Number(row.setupTime) : 0,
       avgMos: 0,
       downloadSpeed: 0,
       uploadSpeed: 0,
@@ -84,6 +90,13 @@ const mapAllCallsRows = (rows: AllCallsRow[]): CallRecord[] => {
   });
 };
 
+const formatLocationSelectionLabel = (selectedCount: number, totalCount: number) => {
+  if (totalCount === 0) return "No locations";
+  if (selectedCount === 0) return `All locations (${totalCount})`;
+  if (selectedCount === totalCount) return `All selected (${totalCount})`;
+  return `${selectedCount} selected`;
+};
+
 const Index = () => {
   const [databases, setDatabases] = useState<string[]>([]);
   const [selectedDatabase, setSelectedDatabase] = useState("");
@@ -92,7 +105,7 @@ const Index = () => {
   const [selectedCallsCollection, setSelectedCallsCollection] = useState("");
   const [locations, setLocations] = useState<string[]>([]);
   const [locationsLoading, setLocationsLoading] = useState(false);
-  const [selectedLocation, setSelectedLocation] = useState("");
+  const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
   const [callsLoading, setCallsLoading] = useState(false);
   const [allCallsRows, setAllCallsRows] = useState<AllCallsRow[]>([]);
   const [callRecords, setCallRecords] = useState<CallRecord[]>([]);
@@ -103,12 +116,34 @@ const Index = () => {
   const [selectedCall, setSelectedCall] = useState<CallRecord | null>(null);
   const [activeTab, setActiveTab] = useState("queries");
 
+  const toggleLocation = (locationName: string) => {
+    setSelectedLocations((prev) =>
+      prev.includes(locationName)
+        ? prev.filter((item) => item !== locationName)
+        : [...prev, locationName],
+    );
+  };
+
+  const selectAllLocations = () => {
+    setSelectedLocations(locations);
+  };
+
+  const clearLocationSelection = () => {
+    // Empty selection means "all locations" for backend filtering.
+    setSelectedLocations([]);
+  };
+
+  const clearCallsFilters = () => {
+    setSelectedDatabase("");
+    setSelectedCallsCollection("");
+    setSelectedLocations([]);
+  };
+
   useEffect(() => {
     const loadDatabases = async () => {
       try {
         const dbs = await fetchDatabases();
         setDatabases(dbs);
-        if (dbs.length > 0) setSelectedDatabase(dbs[0]);
       } catch (err: any) {
         console.error("Failed to fetch databases:", err);
         const toastError = formatApiError(err, "Database Connection Error");
@@ -154,7 +189,7 @@ const Index = () => {
 
   useEffect(() => {
     setSelectedCallsCollection("");
-    setSelectedLocation("");
+    setSelectedLocations([]);
     setLocations([]);
     setAllCallsRows([]);
     setCallRecords([]);
@@ -171,7 +206,7 @@ const Index = () => {
     const loadLocations = async () => {
       if (!selectedDatabase || !selectedCallsCollection) {
         setLocations([]);
-        setSelectedLocation("");
+        setSelectedLocations([]);
         return;
       }
 
@@ -180,11 +215,11 @@ const Index = () => {
       try {
         const names = await fetchLocations(selectedDatabase, selectedCallsCollection);
         setLocations(names);
-        setSelectedLocation((prev) => (prev && names.includes(prev) ? prev : ""));
+        setSelectedLocations((prev) => prev.filter((name) => names.includes(name)));
       } catch (err: any) {
         console.error("Failed to fetch locations:", err);
         setLocations([]);
-        setSelectedLocation("");
+        setSelectedLocations([]);
         const toastError = formatApiError(err, "Locations Fetch Failed");
         toast({
           title: toastError.title,
@@ -201,7 +236,7 @@ const Index = () => {
 
   useEffect(() => {
     const loadAllCalls = async () => {
-      if (!selectedDatabase || !selectedCallsCollection || !selectedLocation) {
+      if (!selectedDatabase || !selectedCallsCollection) {
         setAllCallsRows([]);
         setCallRecords([]);
         setSelectedCall(null);
@@ -211,7 +246,11 @@ const Index = () => {
       setCallsLoading(true);
 
       try {
-        const rows = await fetchAllCalls(selectedDatabase, selectedCallsCollection, selectedLocation);
+        const effectiveLocations =
+          selectedLocations.length === 0 || selectedLocations.length === locations.length
+            ? []
+            : selectedLocations;
+        const rows = await fetchAllCalls(selectedDatabase, selectedCallsCollection, effectiveLocations);
         setAllCallsRows(rows);
         const mapped = mapAllCallsRows(rows);
         setCallRecords(mapped);
@@ -233,7 +272,7 @@ const Index = () => {
     };
 
     loadAllCalls();
-  }, [selectedDatabase, selectedCallsCollection, selectedLocation]);
+  }, [selectedDatabase, selectedCallsCollection, selectedLocations, locations]);
 
   const handleRunQueries = async (queries: string[]) => {
     if (!selectedDatabase) return;
@@ -366,86 +405,180 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="calls" className="space-y-4">
-            <div className="bg-card border border-border rounded-lg p-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-medium">Collection</label>
-                  <select
-                    value={selectedCallsCollection}
-                    onChange={(e) => setSelectedCallsCollection(e.target.value)}
-                    className="mt-1 w-full bg-muted border border-border rounded-md px-3 py-2 text-sm"
-                  >
-                    <option value="">Select collection</option>
-                    {collectionNames.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
+            <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4 items-start">
+              <aside className="space-y-3 lg:sticky lg:top-24">
+                <div className="bg-card border border-border rounded-lg p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        Filters
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={clearCallsFilters}
+                        className="text-[10px] px-2 py-1 rounded border border-border bg-muted hover:bg-muted/70"
+                      >
+                        Clear filters
+                      </button>
+                    </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-medium">Database (Global)</label>
+                      <select
+                        value={selectedDatabase}
+                        onChange={(e) => setSelectedDatabase(e.target.value)}
+                        className="mt-1 w-full bg-muted border border-border rounded-md px-3 py-2 text-sm"
+                      >
+                        <option value="">Select database</option>
+                        {databases.map((db) => (
+                          <option key={db} value={db}>
+                            {db}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-medium">Collection</label>
+                      <select
+                        value={selectedCallsCollection}
+                        onChange={(e) => setSelectedCallsCollection(e.target.value)}
+                        className="mt-1 w-full bg-muted border border-border rounded-md px-3 py-2 text-sm"
+                      >
+                        <option value="">Select collection</option>
+                        {collectionNames.map((name) => (
+                          <option key={name} value={name}>
+                            {name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-medium">Locations</label>
+                        <span className="text-[10px] text-muted-foreground">
+                          {formatLocationSelectionLabel(selectedLocations.length, locations.length)}
+                        </span>
+                      </div>
+
+                      <div className="mt-1 flex gap-1.5">
+                        <button
+                          type="button"
+                          onClick={selectAllLocations}
+                          disabled={!selectedCallsCollection || locations.length === 0 || locationsLoading}
+                          className="text-[10px] px-2 py-1 rounded border border-border bg-muted hover:bg-muted/70 disabled:opacity-50"
+                        >
+                          Select all
+                        </button>
+                        <button
+                          type="button"
+                          onClick={clearLocationSelection}
+                          disabled={!selectedCallsCollection || locations.length === 0 || locationsLoading}
+                          className="text-[10px] px-2 py-1 rounded border border-border bg-muted hover:bg-muted/70 disabled:opacity-50"
+                        >
+                          All rows
+                        </button>
+                      </div>
+
+                      <div className="mt-2 max-h-56 overflow-auto rounded-md border border-border bg-muted/30 p-2 space-y-1">
+                        {!selectedCallsCollection && (
+                          <p className="text-[11px] text-muted-foreground">Select collection first.</p>
+                        )}
+                        {selectedCallsCollection && locationsLoading && (
+                          <p className="text-[11px] text-muted-foreground">Loading locations...</p>
+                        )}
+                        {selectedCallsCollection && !locationsLoading && locations.length === 0 && (
+                          <p className="text-[11px] text-muted-foreground">No locations found.</p>
+                        )}
+                        {selectedCallsCollection && !locationsLoading && locations.map((name) => (
+                          <label key={name} className="flex items-center gap-2 text-xs text-foreground cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={selectedLocations.includes(name)}
+                              onChange={() => toggleLocation(name)}
+                              className="h-3.5 w-3.5"
+                            />
+                            <span>{name}</span>
+                          </label>
+                        ))}
+                      </div>
+
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        If no location is selected, all locations are included.
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="text-xs font-medium">Location</label>
-                  <select
-                    value={selectedLocation}
-                    onChange={(e) => setSelectedLocation(e.target.value)}
-                    disabled={!selectedCallsCollection || locationsLoading}
-                    className="mt-1 w-full bg-muted border border-border rounded-md px-3 py-2 text-sm disabled:opacity-60"
-                  >
-                    <option value="">{locationsLoading ? "Loading locations..." : "Select location"}</option>
-                    {locations.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
+                <div className="bg-card border border-border rounded-lg p-3">
+                  <p className="text-[11px] text-muted-foreground mb-1">Active filters</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    <Badge variant="secondary" className="text-[10px]">DB: {selectedDatabase || "-"}</Badge>
+                    <Badge variant="secondary" className="text-[10px]">Collection: {selectedCallsCollection || "-"}</Badge>
+                    <Badge variant="secondary" className="text-[10px]">
+                      Locations: {selectedLocations.length === 0 ? "All" : selectedLocations.length}
+                    </Badge>
+                  </div>
                 </div>
-              </div>
-            </div>
+              </aside>
 
-            <div className="bg-card border border-border rounded-lg overflow-hidden">
-              <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-                <div>
-                  <h2 className="text-sm font-semibold text-foreground">All Calls</h2>
-                  <p className="text-xs text-muted-foreground">
-                    {callsLoading
-                      ? "Loading..."
-                      : `${allCallsRows.length} rows`}
-                  </p>
+              <div className="bg-card border border-border rounded-lg overflow-hidden">
+                <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-semibold text-foreground">All Calls</h2>
+                    <p className="text-xs text-muted-foreground">
+                      {callsLoading
+                        ? "Loading..."
+                        : `${allCallsRows.length} rows`}
+                    </p>
+                  </div>
                 </div>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b border-border bg-muted/30 text-left text-muted-foreground uppercase tracking-wider">
-                      <th className="px-4 py-2 font-semibold">SessionId</th>
-                      <th className="px-4 py-2 font-semibold">Status</th>
-                      <th className="px-4 py-2 font-semibold">CollectionName</th>
-                      <th className="px-4 py-2 font-semibold">Location</th>
-                      <th className="px-4 py-2 font-semibold">Latitude</th>
-                      <th className="px-4 py-2 font-semibold">Longitude</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {!callsLoading && allCallsRows.length === 0 && (
-                      <tr>
-                        <td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">
-                          Select collection and location to load calls.
-                        </td>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-border bg-muted/30 text-left text-muted-foreground uppercase tracking-wider">
+                        <th className="px-4 py-2 font-semibold">Location</th>
+                        <th className="px-4 py-2 font-semibold">SessionId</th>
+                        <th className="px-4 py-2 font-semibold">Call Type</th>
+                        <th className="px-4 py-2 font-semibold">Technology</th>
+                        <th className="px-4 py-2 font-semibold">Call Dir</th>
+                        <th className="px-4 py-2 font-semibold">Status</th>
+                        <th className="px-4 py-2 font-semibold">Setup Time</th>
+                        <th className="px-4 py-2 font-semibold">CollectionName</th>
+                        <th className="px-4 py-2 font-semibold">Call Duration</th>
+                        <th className="px-4 py-2 font-semibold">Call Start Time</th>
+                        <th className="px-4 py-2 font-semibold">Latitude</th>
+                        <th className="px-4 py-2 font-semibold">Longitude</th>
                       </tr>
-                    )}
-                    {allCallsRows.map((row, idx) => (
-                      <tr key={`${row.SessionId}-${idx}`} className="border-b border-border/60 hover:bg-muted/20">
-                        <td className="px-4 py-2 font-mono text-foreground">{row.SessionId}</td>
-                        <td className="px-4 py-2 text-foreground">{row.status ?? "N/A"}</td>
-                        <td className="px-4 py-2 text-foreground">{row.CollectionName ?? "N/A"}</td>
-                        <td className="px-4 py-2 text-foreground">{row.Location ?? "N/A"}</td>
-                        <td className="px-4 py-2 font-mono text-foreground">{row.latitude ?? "N/A"}</td>
-                        <td className="px-4 py-2 font-mono text-foreground">{row.longitude ?? "N/A"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {!callsLoading && allCallsRows.length === 0 && (
+                        <tr>
+                          <td colSpan={11} className="px-4 py-6 text-center text-muted-foreground">
+                            Select a collection to load calls.
+                          </td>
+                        </tr>
+                      )}
+                      {allCallsRows.map((row, idx) => (
+                        <tr key={`${row.SessionId}-${idx}`} className="border-b border-border/60 hover:bg-muted/20">
+                          <td className="px-4 py-2 text-foreground">{row.Location ?? "N/A"}</td>
+                          <td className="px-4 py-2 font-mono text-foreground">{row.SessionId}</td>
+                          <td className="px-4 py-2 text-foreground">{row.callType ?? "N/A"}</td>
+                          <td className="px-4 py-2 text-foreground">{row.technology ?? "N/A"}</td>
+                          <td className="px-4 py-2 text-foreground">{row.callDir ?? "N/A"}</td>
+                          <td className="px-4 py-2 text-foreground">{row.status ?? "N/A"}</td>
+                          <td className="px-4 py-2 font-mono text-foreground">{row.setupTime ?? "N/A"}</td>
+                          <td className="px-4 py-2 text-foreground">{row.CollectionName ?? "N/A"}</td>
+                          <td className="px-4 py-2 font-mono text-foreground">{row.callDuration ?? "N/A"}</td>
+                          <td className="px-4 py-2 font-mono text-foreground">{row.callStartTimeStamp ?? "N/A"}</td>
+                          <td className="px-4 py-2 font-mono text-foreground">{row.latitude ?? "N/A"}</td>
+                          <td className="px-4 py-2 font-mono text-foreground">{row.longitude ?? "N/A"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </TabsContent>

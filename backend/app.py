@@ -23,31 +23,45 @@ class QueryRequest(BaseModel):
 def list_calls(
     database: str = Query(..., min_length=1),
     collection: str = Query(..., min_length=1),
-    location: str = Query(..., min_length=1),
+    location: list[str] | None = Query(default=None),
 ):
     try:
         conn = get_connection(database)
         cursor = conn.cursor()
 
-        cursor.execute(
-            """
+        query = """
             SELECT
-                CA.SessionId,
-                CA.callStatus AS status,
-                DF.CollectionName,
                 DF.ASideLocation AS Location,
+                CA.SessionId,
+                CA.callType,
+                CA.technology,
+                CA.callDir,
+                CA.callStatus AS status,
+                CA.setupTime,
+                DF.CollectionName,
+                CA.callDuration,
+                CA.callStartTimeStamp,
                 POS.Latitude AS latitude,
                 POS.Longitude AS longitude
             FROM CallAnalysis CA
             LEFT JOIN FileList DF ON CA.FileId = DF.FileId
             LEFT JOIN Position POS ON CA.PosId = POS.PosId
             LEFT JOIN Sessions S ON S.SessionId = CA.SessionId
-            WHERE DF.ASideLocation = ?
-              AND DF.CollectionName = ?
+            WHERE DF.CollectionName = ?
               AND S.Valid = 1
-            """,
-            (location, collection),
-        )
+        """
+
+        params: list[object] = [collection]
+        selected_locations = [loc for loc in (location or []) if loc and loc.strip()]
+
+        if selected_locations:
+            placeholders = ", ".join(["?"] * len(selected_locations))
+            query += f" AND DF.ASideLocation IN ({placeholders})"
+            params.extend(selected_locations)
+
+        query += " ORDER BY CA.callStartTimeStamp"
+
+        cursor.execute(query, tuple(params))
 
         columns = [col[0] for col in cursor.description] if cursor.description else []
         rows = cursor.fetchall() if cursor.description else []

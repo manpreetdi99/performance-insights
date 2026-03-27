@@ -88,10 +88,16 @@ export async function fetchLocations(database: string, collection: string): Prom
 }
 
 export interface AllCallsRow {
-  SessionId: string;
-  status: string | null;
-  CollectionName: string | null;
   Location: string | null;
+  SessionId: string;
+  callType: string | null;
+  technology: string | null;
+  callDir: string | null;
+  status: string | null;
+  setupTime: number | null;
+  CollectionName: string | null;
+  callDuration: number | null;
+  callStartTimeStamp: string | null;
   latitude: number | null;
   longitude: number | null;
 }
@@ -99,9 +105,12 @@ export interface AllCallsRow {
 export async function fetchAllCalls(
   database: string,
   collection: string,
-  location: string,
+  locations: string[] = [],
 ): Promise<AllCallsRow[]> {
-  const params = new URLSearchParams({ database, collection, location });
+  const params = new URLSearchParams({ database, collection });
+  for (const location of locations) {
+    params.append("location", location);
+  }
   const json = await requestJson<{ rows: AllCallsRow[] }>(`/api/calls?${params.toString()}`);
   return json.rows;
 }
