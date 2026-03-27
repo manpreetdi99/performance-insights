@@ -43,8 +43,13 @@ const Index = () => {
         const dbs = await fetchDatabases();
         setDatabases(dbs);
         if (dbs.length > 0) setSelectedDatabase(dbs[0]);
-      } catch (err) {
-        console.error(err);
+      } catch (err: any) {
+        console.error("Failed to fetch databases:", err);
+        toast({
+          title: "Database Connection Error",
+          description: `Cannot connect to backend: ${err.message}. Make sure your Python server is running on localhost:8000`,
+          variant: "destructive",
+        });
       }
     };
 
