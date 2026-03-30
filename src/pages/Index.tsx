@@ -53,10 +53,10 @@ const normalizeStatus = (status: string | null | undefined): CallRecord["status"
 const getAllCallsRowClass = (status: string | null | undefined): string => {
   const normalized = (status || "").toLowerCase();
   if (normalized.includes("system release") || normalized.includes("system realase")) {
-    return "bg-violet-500/10 hover:bg-violet-500/20";
+    return "bg-violet-500/25 hover:bg-violet-500/35 border-violet-500/40";
   }
   if (normalized.includes("drop") || normalized.includes("fail")) {
-    return "bg-orange-500/10 hover:bg-orange-500/20";
+    return "bg-orange-500/25 hover:bg-orange-500/35 border-orange-500/40";
   }
   return "hover:bg-muted/20";
 };

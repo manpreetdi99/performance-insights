@@ -33,22 +33,22 @@ def list_calls(
             SELECT
                 DF.ASideLocation AS Location,
                 CA.SessionId,
-                CA.callType,
                 CA.technology,
+                CA.callType,
                 CA.callDir,
                 CA.callStatus AS status,
-                CA.setupTime,
                 DF.CollectionName,
-                CA.callDuration,
-                CA.callStartTimeStamp,
+                ROUND(CA.setupTime, 2) AS setupTime,
+                COALESCE(S.startTime, SB.startTime) AS callStartTimeStamp,
                 POS.Latitude AS latitude,
                 POS.Longitude AS longitude
             FROM CallAnalysis CA
             LEFT JOIN FileList DF ON CA.FileId = DF.FileId
             LEFT JOIN Position POS ON CA.PosId = POS.PosId
             LEFT JOIN Sessions S ON S.SessionId = CA.SessionId
-            WHERE DF.CollectionName = ?
-              AND S.Valid = 1
+            LEFT JOIN SessionsB SB ON SB.SessionId = CA.SessionId
+            WHERE  DF.CollectionName = ?
+            and S.Valid = 1
         """
 
         params: list[object] = [collection]
@@ -59,7 +59,7 @@ def list_calls(
             query += f" AND DF.ASideLocation IN ({placeholders})"
             params.extend(selected_locations)
 
-        query += " ORDER BY CA.callStartTimeStamp"
+        query += " ORDER BY callStartTimeStamp"
 
         cursor.execute(query, tuple(params))
 
