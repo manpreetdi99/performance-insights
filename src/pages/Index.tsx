@@ -50,11 +50,23 @@ const normalizeStatus = (status: string | null | undefined): CallRecord["status"
   return "completed";
 };
 
+const getAllCallsRowClass = (status: string | null | undefined): string => {
+  const normalized = (status || "").toLowerCase();
+  if (normalized.includes("system release") || normalized.includes("system realase")) {
+    return "bg-violet-500/10 hover:bg-violet-500/20";
+  }
+  if (normalized.includes("drop") || normalized.includes("fail")) {
+    return "bg-orange-500/10 hover:bg-orange-500/20";
+  }
+  return "hover:bg-muted/20";
+};
+
 const mapAllCallsRows = (rows: AllCallsRow[]): CallRecord[] => {
   return rows.map((row, index) => {
     const status = normalizeStatus(row.status);
-    const startIso = row.callStartTimeStamp
-      ? new Date(row.callStartTimeStamp).toISOString()
+    const callStartTime = row.MsgTime ?? row.callStartTimeStamp;
+    const startIso = callStartTime
+      ? new Date(callStartTime).toISOString()
       : new Date().toISOString();
     const durationSeconds = row.callDuration != null ? Number(row.callDuration) : 0;
     const endIso = new Date(new Date(startIso).getTime() + durationSeconds * 1000).toISOString();
@@ -561,7 +573,10 @@ const Index = () => {
                         </tr>
                       )}
                       {allCallsRows.map((row, idx) => (
-                        <tr key={`${row.SessionId}-${idx}`} className="border-b border-border/60 hover:bg-muted/20">
+                        <tr
+                          key={`${row.SessionId}-${idx}`}
+                          className={`border-b border-border/60 ${getAllCallsRowClass(row.status)}`}
+                        >
                           <td className="px-4 py-2 text-foreground">{row.Location ?? "N/A"}</td>
                           <td className="px-4 py-2 font-mono text-foreground">{row.SessionId}</td>
                           <td className="px-4 py-2 text-foreground">{row.callType ?? "N/A"}</td>
@@ -571,7 +586,7 @@ const Index = () => {
                           <td className="px-4 py-2 font-mono text-foreground">{row.setupTime ?? "N/A"}</td>
                           <td className="px-4 py-2 text-foreground">{row.CollectionName ?? "N/A"}</td>
                           <td className="px-4 py-2 font-mono text-foreground">{row.callDuration ?? "N/A"}</td>
-                          <td className="px-4 py-2 font-mono text-foreground">{row.callStartTimeStamp ?? "N/A"}</td>
+                          <td className="px-4 py-2 font-mono text-foreground">{row.MsgTime ?? row.callStartTimeStamp ?? "N/A"}</td>
                           <td className="px-4 py-2 font-mono text-foreground">{row.latitude ?? "N/A"}</td>
                           <td className="px-4 py-2 font-mono text-foreground">{row.longitude ?? "N/A"}</td>
                         </tr>

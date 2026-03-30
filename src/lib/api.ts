@@ -97,7 +97,8 @@ export interface AllCallsRow {
   setupTime: number | null;
   CollectionName: string | null;
   callDuration: number | null;
-  callStartTimeStamp: string | null;
+  MsgTime: string | null;
+  callStartTimeStamp?: string | null;
   latitude: number | null;
   longitude: number | null;
 }
