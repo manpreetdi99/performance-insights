@@ -64,7 +64,7 @@ const getAllCallsRowClass = (status: string | null | undefined): string => {
 const mapAllCallsRows = (rows: AllCallsRow[]): CallRecord[] => {
   return rows.map((row, index) => {
     const status = normalizeStatus(row.status);
-    const callStartTime = row.MsgTime ?? row.callStartTimeStamp;
+    const callStartTime = row.callStartTimeStamp;
     const startIso = callStartTime
       ? new Date(callStartTime).toISOString()
       : new Date().toISOString();
@@ -107,6 +107,21 @@ const formatLocationSelectionLabel = (selectedCount: number, totalCount: number)
   if (selectedCount === 0) return `All locations (${totalCount})`;
   if (selectedCount === totalCount) return `All selected (${totalCount})`;
   return `${selectedCount} selected`;
+};
+
+const formatCallStartTime = (dateStr: string | null | undefined): string => {
+  if (!dateStr) return "N/A";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  
+  const h = String(d.getHours()).padStart(2, "0");
+  const m = String(d.getMinutes()).padStart(2, "0");
+  const s = String(d.getSeconds()).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const year = d.getFullYear();
+  
+  return `${h}:${m}:${s} ${day}/${month}/${year}`;
 };
 
 const Index = () => {
@@ -313,7 +328,7 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="w-full px-4 sm:px-6 lg:px-10 mx-auto flex items-center justify-between py-3">
           <div className="flex items-center gap-3">
             <div className="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center glow-primary">
               <Activity className="h-4 w-4 text-red-500" />
@@ -340,7 +355,7 @@ const Index = () => {
         </div>
       </header>
 
-      <main className="container max-w-7xl mx-auto px-4 py-6">
+      <main className="w-full px-4 sm:px-6 lg:px-10 mx-auto py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="bg-muted border border-border mb-6">
             <TabsTrigger value="queries" className="gap-1.5 text-xs">
@@ -550,24 +565,28 @@ const Index = () => {
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="border-b border-border bg-muted/30 text-left text-muted-foreground uppercase tracking-wider">
-                        <th className="px-4 py-2 font-semibold">Location</th>
-                        <th className="px-4 py-2 font-semibold">SessionId</th>
-                        <th className="px-4 py-2 font-semibold">Call Type</th>
-                        <th className="px-4 py-2 font-semibold">Technology</th>
-                        <th className="px-4 py-2 font-semibold">Call Dir</th>
-                        <th className="px-4 py-2 font-semibold">Status</th>
-                        <th className="px-4 py-2 font-semibold">Setup Time</th>
-                        <th className="px-4 py-2 font-semibold">CollectionName</th>
-                        <th className="px-4 py-2 font-semibold">Call Duration</th>
-                        <th className="px-4 py-2 font-semibold">Call Start Time</th>
-                        <th className="px-4 py-2 font-semibold">Latitude</th>
-                        <th className="px-4 py-2 font-semibold">Longitude</th>
+                        <th className="px-2 py-2 font-semibold">Location</th>
+                        <th className="px-2 py-2 font-semibold">SessionId</th> 
+                        <th className="px-2 py-2 font-semibold">Technology</th>
+                        <th className="px-2 py-2 font-semibold">Call Type</th>
+                        <th className="px-2 py-2 font-semibold">Call Dir</th>
+                        <th className="px-2 py-2 font-semibold">Status</th>
+                        <th className="px-2 py-2 font-semibold">Comment</th>
+                        <th className="px-2 py-2 font-semibold">Setup Time</th>
+                        <th className="px-2 py-2 font-semibold">Avg MOS</th>
+                        <th className="px-2 py-2 font-semibold">Call Start Time</th>
+                        <th className="px-2 py-2 font-semibold">Call Duration</th>
+                        <th className="px-2 py-2 font-semibold">CollectionName</th>
+                        
+                        
+                        {/* <th className="px-2 py-2 font-semibold">Latitude</th>
+                        <th className="px-2 py-2 font-semibold">Longitude</th> */}
                       </tr>
                     </thead>
                     <tbody>
                       {!callsLoading && allCallsRows.length === 0 && (
                         <tr>
-                          <td colSpan={11} className="px-4 py-6 text-center text-muted-foreground">
+                          <td colSpan={11} className="px-2 py-6 text-center text-muted-foreground">
                             Select a collection to load calls.
                           </td>
                         </tr>
@@ -577,18 +596,23 @@ const Index = () => {
                           key={`${row.SessionId}-${idx}`}
                           className={`border-b border-border/60 ${getAllCallsRowClass(row.status)}`}
                         >
-                          <td className="px-4 py-2 text-foreground">{row.Location ?? "N/A"}</td>
-                          <td className="px-4 py-2 font-mono text-foreground">{row.SessionId}</td>
-                          <td className="px-4 py-2 text-foreground">{row.callType ?? "N/A"}</td>
-                          <td className="px-4 py-2 text-foreground">{row.technology ?? "N/A"}</td>
-                          <td className="px-4 py-2 text-foreground">{row.callDir ?? "N/A"}</td>
-                          <td className="px-4 py-2 text-foreground">{row.status ?? "N/A"}</td>
-                          <td className="px-4 py-2 font-mono text-foreground">{row.setupTime ?? "N/A"}</td>
-                          <td className="px-4 py-2 text-foreground">{row.CollectionName ?? "N/A"}</td>
-                          <td className="px-4 py-2 font-mono text-foreground">{row.callDuration ?? "N/A"}</td>
-                          <td className="px-4 py-2 font-mono text-foreground">{row.MsgTime ?? row.callStartTimeStamp ?? "N/A"}</td>
-                          <td className="px-4 py-2 font-mono text-foreground">{row.latitude ?? "N/A"}</td>
-                          <td className="px-4 py-2 font-mono text-foreground">{row.longitude ?? "N/A"}</td>
+                          <td className="px-2 py-2 text-foreground">{row.Location ?? "N/A"}</td>
+                          <td className="px-2 py-2 font-mono text-foreground break-words max-w-[120px]">{row.SessionId}</td>
+                          
+                          <td className="px-2 py-2 text-foreground">{row.technology ?? "N/A"}</td>
+                          <td className="px-2 py-2 text-foreground">{row.callType ?? "N/A"}</td>
+                          <td className="px-2 py-2 text-foreground">{row.callDir ?? "N/A"}</td>
+                          <td className="px-2 py-2 text-foreground">{row.status ?? "N/A"}</td>
+                          <td className="px-2 py-2 text-foreground">{row.comment ?? "N/A"}</td>
+                          <td className="px-2 py-2 font-mono text-foreground">{row.setupTime ?? "N/A"}</td>
+
+                          <td className="px-2 py-2 font-mono text-foreground">{row.Avg_mos ?? "N/A"}</td>
+                          <td className="px-2 py-2 font-mono text-foreground break-words max-w-[100px]">{formatCallStartTime(row.callStartTimeStamp )}</td>
+                          <td className="px-2 py-2 font-mono text-foreground foreground break-words max-w-[150px]">{row.callDuration ?? "N/A"}</td>
+                          <td className="px-2 py-2 text-foreground break-words max-w-[150px]">{row.CollectionName ?? "N/A"}</td>
+
+                          {/* <td className="px-2 py-2 font-mono text-foreground">{row.latitude ?? "N/A"}</td>
+                          <td className="px-2 py-2 font-mono text-foreground">{row.longitude ?? "N/A"}</td> */}
                         </tr>
                       ))}
                     </tbody>

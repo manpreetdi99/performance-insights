@@ -33,13 +33,19 @@ def list_calls(
             SELECT
                 DF.ASideLocation AS Location,
                 CA.SessionId,
-                CA.technology,
+                CONCAT(CA.technology,' -- ',CA.callmode) as technology,
                 CA.callType,
                 CA.callDir,
                 CA.callStatus AS status,
                 DF.CollectionName,
-                ROUND(CA.setupTime, 2) AS setupTime,
                 COALESCE(S.startTime, SB.startTime) AS callStartTimeStamp,
+                ROUND(CA.setupTime, 2) AS setupTime,
+                (SELECT ROUND(AVG(OptionalWB),2) AS MOS
+                    FROM ResultsLQ08Avg 
+                    WHERE SessionId = CA.SessionId) AS Avg_mos,
+                (ca.callDuration/1000) as callDuration,
+                COALESCE (AC.Comment, s.InvalidReason) AS comment,
+                DF.ASideFileName,
                 POS.Latitude AS latitude,
                 POS.Longitude AS longitude
             FROM CallAnalysis CA
@@ -47,8 +53,10 @@ def list_calls(
             LEFT JOIN Position POS ON CA.PosId = POS.PosId
             LEFT JOIN Sessions S ON S.SessionId = CA.SessionId
             LEFT JOIN SessionsB SB ON SB.SessionId = CA.SessionId
+			LEFT JOIN AnalysisCommentSessionsBridge ACSB ON ACSB.sessionID = CA.SessionId
+			LEFT JOIN AnalysisComment AC ON ACSB.commentId = AC.commentID
             WHERE  DF.CollectionName = ?
-            and S.Valid = 1
+            and (S.Valid = 1 or S.Valid = 0)
         """
 
         params: list[object] = [collection]

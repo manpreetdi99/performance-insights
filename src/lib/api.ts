@@ -97,10 +97,12 @@ export interface AllCallsRow {
   setupTime: number | null;
   CollectionName: string | null;
   callDuration: number | null;
-  MsgTime: string | null;
-  callStartTimeStamp?: string | null;
+  callStartTimeStamp: string | null;
+  Avg_mos: number | null;
   latitude: number | null;
   longitude: number | null;
+  file: string | null;
+  comment: string | null;
 }
 
 export async function fetchAllCalls(
