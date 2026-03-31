@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, Fragment } from "react";
 import { motion } from "framer-motion";
 import { Activity, BarChart3, Phone, Database, MapPin } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
@@ -122,6 +122,13 @@ const formatCallStartTime = (dateStr: string | null | undefined): string => {
   const year = d.getFullYear();
   
   return `${h}:${m}:${s} ${day}/${month}/${year}`;
+};
+// μετατροπη ημερομηνιας απο το filename για να βγαζει την γραμμη end of file
+const getFileDateTime = (filename: string | null | undefined): string | null => {
+  if (!filename) return null;
+  // Extracts the prefix matching YYYY-MM-DD-HH-mm-ss
+  const match = filename.match(/^(\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2})/);
+  return match ? match[1] : null;
 };
 
 const Index = () => {
@@ -637,35 +644,57 @@ const Index = () => {
                     <tbody>
                       {!callsLoading && allCallsRows.length === 0 && (
                         <tr>
-                          <td colSpan={11} className="px-2 py-6 text-center text-muted-foreground">
+                          <td colSpan={12} className="px-2 py-6 text-center text-muted-foreground">
                             Select a collection to load calls.
                           </td>
                         </tr>
                       )}
-                      {allCallsRows.map((row, idx) => (
-                        <tr
-                          key={`${row.SessionId}-${idx}`}
-                          className={`border-b border-border/60 ${getAllCallsRowClass(row.status)}`}
-                        >
-                          <td className="px-2 py-2 text-foreground">{row.Location ?? "N/A"}</td>
-                          <td className="px-2 py-2 font-mono text-foreground break-words max-w-[120px]">{row.SessionId}</td>
-                          
-                          <td className="px-2 py-2 text-foreground">{row.technology ?? "N/A"}</td>
-                          <td className="px-2 py-2 text-foreground">{row.callType ?? "N/A"}</td>
-                          <td className="px-2 py-2 text-foreground">{row.callDir ?? "N/A"}</td>
-                          <td className="px-2 py-2 text-foreground">{row.status ?? "N/A"}</td>
-                          <td className="px-2 py-2 text-foreground">{row.comment ?? "N/A"}</td>
-                          <td className="px-2 py-2 font-mono text-foreground">{row.setupTime ?? "N/A"}</td>
+                      {/* να βγαζει την γραμμη end of file*/}
+                      {allCallsRows.map((row, idx) => {
+                        const currentFileTime = getFileDateTime(row.ASideFileName);
+                        let showEndOfFile = false;
+                        
+                        if (idx > 0) {
+                          const prevFileTime = getFileDateTime(allCallsRows[idx - 1].ASideFileName);
+                          // Show "End of File" if the date/time part of the filename changed
+                          if (prevFileTime !== null && currentFileTime !== null && prevFileTime !== currentFileTime) {
+                            showEndOfFile = true;
+                          }
+                        }
 
-                          <td className="px-2 py-2 font-mono text-foreground">{row.Avg_mos ?? "N/A"}</td>
-                          <td className="px-2 py-2 font-mono text-foreground break-words max-w-[100px]">{formatCallStartTime(row.callStartTimeStamp )}</td>
-                          <td className="px-2 py-2 font-mono text-foreground foreground break-words max-w-[150px]">{row.callDuration ?? "N/A"}</td>
-                          <td className="px-2 py-2 text-foreground break-words max-w-[150px]">{row.CollectionName ?? "N/A"}</td>
+                        return (
+                          <Fragment key={`${row.SessionId}-${idx}`}>
+                            {showEndOfFile && (
+                              <tr className="bg-muted/50 border-y border-border">
+                                <td 
+                                  colSpan={12} 
+                                  className="px-2 py-10 text-center text-xs font-semibold text-red-500 uppercase tracking-widest"
+                                  >
+                                  End of File
+                                </td>
+                              </tr>
+                            )}
+                            <tr
+                              className={`border-b border-border/60 ${getAllCallsRowClass(row.status)}`}
+                            >
+                              <td className="px-2 py-2 text-foreground">{row.Location ?? "N/A"}</td>
+                              <td className="px-2 py-2 font-mono text-foreground break-words max-w-[120px]">{row.SessionId}</td>
+                              
+                              <td className="px-2 py-2 text-foreground">{row.technology ?? "N/A"}</td>
+                              <td className="px-2 py-2 text-foreground">{row.callType ?? "N/A"}</td>
+                              <td className="px-2 py-2 text-foreground">{row.callDir ?? "N/A"}</td>
+                              <td className="px-2 py-2 text-foreground">{row.status ?? "N/A"}</td>
+                              <td className="px-2 py-2 text-foreground">{row.comment ?? "N/A"}</td>
+                              <td className="px-2 py-2 font-mono text-foreground">{row.setupTime ?? "N/A"}</td>
 
-                          {/* <td className="px-2 py-2 font-mono text-foreground">{row.latitude ?? "N/A"}</td>
-                          <td className="px-2 py-2 font-mono text-foreground">{row.longitude ?? "N/A"}</td> */}
-                        </tr>
-                      ))}
+                              <td className="px-2 py-2 font-mono text-foreground">{row.Avg_mos ?? "N/A"}</td>
+                              <td className="px-2 py-2 font-mono text-foreground break-words max-w-[100px]">{formatCallStartTime(row.callStartTimeStamp )}</td>
+                              <td className="px-2 py-2 font-mono text-foreground foreground break-words max-w-[150px]">{row.callDuration ?? "N/A"}</td>
+                              <td className="px-2 py-2 text-foreground break-words max-w-[150px]">{row.CollectionName ?? "N/A"}</td>
+                            </tr>
+                          </Fragment>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

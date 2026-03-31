@@ -104,7 +104,7 @@ export interface AllCallsRow {
   Avg_mos: number | null;
   latitude: number | null;
   longitude: number | null;
-  file: string | null;
+  ASideFileName?: string | null;
   comment: string | null;
 }
 
