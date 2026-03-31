@@ -9,6 +9,7 @@ import BenchmarkCharts from "@/components/BenchmarkCharts";
 import StatsCards from "@/components/StatsCards";
 import CallDetail from "@/components/CallDetail";
 import CallsMap from "@/components/CallsMap";
+import { useLocalStorage } from "@/hooks/use-local-storage"; //βιβλιοθηκη για αποθηκευση τιμων στο local storage του browser
 import type { CallRecord } from "@/lib/callData";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -123,7 +124,7 @@ const formatCallStartTime = (dateStr: string | null | undefined): string => {
   
   return `${h}:${m}:${s} ${day}/${month}/${year}`;
 };
-// μετατροπη ημερομηνιας απο το filename για να βγαζει την γραμμη end of file
+// μετατροπη του ονόματος του αρχείου σε ημερομηνία και ώρα για να βγαζει την γραμμη end of file οταν αλλάζει το αρχείο
 const getFileDateTime = (filename: string | null | undefined): string | null => {
   if (!filename) return null;
   // Extracts the prefix matching YYYY-MM-DD-HH-mm-ss
@@ -133,13 +134,13 @@ const getFileDateTime = (filename: string | null | undefined): string | null => 
 
 const Index = () => {
   const [databases, setDatabases] = useState<string[]>([]);
-  const [selectedDatabase, setSelectedDatabase] = useState("");
+  const [selectedDatabase, setSelectedDatabase] = useLocalStorage<string>("perf-insights-selected-db", "");
   const [collectionNames, setCollectionNames] = useState<string[]>([]);
   const [collectionsLoading, setCollectionsLoading] = useState(false);
-  const [selectedCallsCollections, setSelectedCallsCollections] = useState<string[]>([]);
+  const [selectedCallsCollections, setSelectedCallsCollections] = useLocalStorage<string[]>("perf-insights-collections", []);
   const [locations, setLocations] = useState<string[]>([]);
   const [locationsLoading, setLocationsLoading] = useState(false);
-  const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
+  const [selectedLocations, setSelectedLocations] = useLocalStorage<string[]>("perf-insights-locations", []);
   const [callsLoading, setCallsLoading] = useState(false);
   const [allCallsRows, setAllCallsRows] = useState<AllCallsRow[]>([]);
   const [callRecords, setCallRecords] = useState<CallRecord[]>([]);
@@ -148,7 +149,7 @@ const Index = () => {
   const [isRunning, setIsRunning] = useState(false);
   const [totalTime, setTotalTime] = useState(0);
   const [selectedCall, setSelectedCall] = useState<CallRecord | null>(null);
-  const [activeTab, setActiveTab] = useState("queries");
+  const [activeTab, setActiveTab] = useLocalStorage<string>("perf-insights-active-tab", "queries");
 
   const toggleCollection = (collectionName: string) => {
     setSelectedCallsCollections((prev) =>
@@ -187,6 +188,16 @@ const Index = () => {
     setSelectedDatabase("");
     setSelectedCallsCollections([]);
     setSelectedLocations([]);
+  };
+
+  const handleDatabaseChange = (newDb: string) => {
+    setSelectedDatabase(newDb);
+    setSelectedCallsCollections([]);
+    setSelectedLocations([]);
+    setLocations([]);
+    setAllCallsRows([]);
+    setCallRecords([]);
+    setSelectedCall(null);
   };
 
   useEffect(() => {
@@ -236,21 +247,6 @@ const Index = () => {
 
     loadCollections();
   }, [selectedDatabase]);
-
-  useEffect(() => {
-    setSelectedCallsCollections([]);
-    setSelectedLocations([]);
-    setLocations([]);
-    setAllCallsRows([]);
-    setCallRecords([]);
-    setSelectedCall(null);
-  }, [selectedDatabase]);
-
-  useEffect(() => {
-    setSelectedCallsCollections((prev) =>
-      prev.filter(c => collectionNames.includes(c))
-    );
-  }, [collectionNames]);
 
   useEffect(() => {
     const loadLocations = async () => {
@@ -365,8 +361,29 @@ const Index = () => {
               </p>
             </div>
           </div>
-
+          
+          <div className="bg-card border border-border rounded-lg p-3">
+            <p className="text-[11px] text-muted-foreground mb-1">Active filters</p>
+              <div className="flex flex-wrap gap-1.5">
+                <Badge variant="secondary" className="text-[10px]">DB: {selectedDatabase || "-"}</Badge>
+                {/* <Badge variant="secondary" className="text-[10px]">Collections: {selectedCallsCollections.length === 0 ? "None" : selectedCallsCollections}</Badge> */}
+                <Badge variant="secondary" className="text-[10px]">
+                  Collections: {selectedCallsCollections.length === 0 ? "None" : selectedCallsCollections.join(', ')}
+                </Badge>
+                <Badge variant="secondary" className="text-[10px]">
+                  Locations: {selectedLocations.length === 0 ? "All" : selectedLocations.length}
+                </Badge>
+              </div>
+          </div>
+          
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <button
+                type="button"
+                onClick={clearCallsFilters}
+                className="text-[20px] px-2 py-1 rounded border border-border bg-muted hover:bg-muted/70"
+                >
+                Clear filters
+              </button>
             <span>{callRecords.length} calls recorded</span>
             {results.length > 0 && (
               <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-1.5">
@@ -401,7 +418,7 @@ const Index = () => {
                 <label className="text-sm font-medium">Database</label>
                 <select
                   value={selectedDatabase}
-                  onChange={(e) => setSelectedDatabase(e.target.value)}
+                  onChange={(e) => handleDatabaseChange(e.target.value)}
                   className="mt-2 w-full bg-muted border border-border rounded-md px-3 py-2 text-sm"
                 >
                   <option value="">Select database</option>
@@ -476,7 +493,7 @@ const Index = () => {
                       <label className="text-xs font-medium">Database (Global)</label>
                       <select
                         value={selectedDatabase}
-                        onChange={(e) => setSelectedDatabase(e.target.value)}
+                        onChange={(e) => handleDatabaseChange(e.target.value)}
                         className="mt-1 w-full bg-muted border border-border rounded-md px-3 py-2 text-sm"
                       >
                         <option value="">Select database</option>
@@ -686,7 +703,6 @@ const Index = () => {
                               <td className="px-2 py-2 text-foreground">{row.status ?? "N/A"}</td>
                               <td className="px-2 py-2 text-foreground">{row.comment ?? "N/A"}</td>
                               <td className="px-2 py-2 font-mono text-foreground">{row.setupTime ?? "N/A"}</td>
-
                               <td className="px-2 py-2 font-mono text-foreground">{row.Avg_mos ?? "N/A"}</td>
                               <td className="px-2 py-2 font-mono text-foreground break-words max-w-[100px]">{formatCallStartTime(row.callStartTimeStamp )}</td>
                               <td className="px-2 py-2 font-mono text-foreground foreground break-words max-w-[150px]">{row.callDuration ?? "N/A"}</td>
