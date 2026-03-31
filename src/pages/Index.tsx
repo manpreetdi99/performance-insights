@@ -129,7 +129,7 @@ const Index = () => {
   const [selectedDatabase, setSelectedDatabase] = useState("");
   const [collectionNames, setCollectionNames] = useState<string[]>([]);
   const [collectionsLoading, setCollectionsLoading] = useState(false);
-  const [selectedCallsCollection, setSelectedCallsCollection] = useState("");
+  const [selectedCallsCollections, setSelectedCallsCollections] = useState<string[]>([]);
   const [locations, setLocations] = useState<string[]>([]);
   const [locationsLoading, setLocationsLoading] = useState(false);
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
@@ -142,6 +142,22 @@ const Index = () => {
   const [totalTime, setTotalTime] = useState(0);
   const [selectedCall, setSelectedCall] = useState<CallRecord | null>(null);
   const [activeTab, setActiveTab] = useState("queries");
+
+  const toggleCollection = (collectionName: string) => {
+    setSelectedCallsCollections((prev) =>
+      prev.includes(collectionName)
+        ? prev.filter((item) => item !== collectionName)
+        : [...prev, collectionName]
+    );
+  };
+
+  const selectAllCollections = () => {
+    setSelectedCallsCollections(collectionNames);
+  };
+
+  const clearCollectionSelection = () => {
+    setSelectedCallsCollections([]);
+  };
 
   const toggleLocation = (locationName: string) => {
     setSelectedLocations((prev) =>
@@ -162,7 +178,7 @@ const Index = () => {
 
   const clearCallsFilters = () => {
     setSelectedDatabase("");
-    setSelectedCallsCollection("");
+    setSelectedCallsCollections([]);
     setSelectedLocations([]);
   };
 
@@ -215,7 +231,7 @@ const Index = () => {
   }, [selectedDatabase]);
 
   useEffect(() => {
-    setSelectedCallsCollection("");
+    setSelectedCallsCollections([]);
     setSelectedLocations([]);
     setLocations([]);
     setAllCallsRows([]);
@@ -224,14 +240,14 @@ const Index = () => {
   }, [selectedDatabase]);
 
   useEffect(() => {
-    setSelectedCallsCollection((prev) =>
-      prev && collectionNames.includes(prev) ? prev : "",
+    setSelectedCallsCollections((prev) =>
+      prev.filter(c => collectionNames.includes(c))
     );
   }, [collectionNames]);
 
   useEffect(() => {
     const loadLocations = async () => {
-      if (!selectedDatabase || !selectedCallsCollection) {
+      if (!selectedDatabase || selectedCallsCollections.length === 0) {
         setLocations([]);
         setSelectedLocations([]);
         return;
@@ -240,7 +256,7 @@ const Index = () => {
       setLocationsLoading(true);
 
       try {
-        const names = await fetchLocations(selectedDatabase, selectedCallsCollection);
+        const names = await fetchLocations(selectedDatabase, selectedCallsCollections);
         setLocations(names);
         setSelectedLocations((prev) => prev.filter((name) => names.includes(name)));
       } catch (err: any) {
@@ -259,11 +275,11 @@ const Index = () => {
     };
 
     loadLocations();
-  }, [selectedDatabase, selectedCallsCollection]);
+  }, [selectedDatabase, selectedCallsCollections]);
 
   useEffect(() => {
     const loadAllCalls = async () => {
-      if (!selectedDatabase || !selectedCallsCollection) {
+      if (!selectedDatabase || selectedCallsCollections.length === 0) {
         setAllCallsRows([]);
         setCallRecords([]);
         setSelectedCall(null);
@@ -277,7 +293,7 @@ const Index = () => {
           selectedLocations.length === 0 || selectedLocations.length === locations.length
             ? []
             : selectedLocations;
-        const rows = await fetchAllCalls(selectedDatabase, selectedCallsCollection, effectiveLocations);
+        const rows = await fetchAllCalls(selectedDatabase, selectedCallsCollections, effectiveLocations);
         setAllCallsRows(rows);
         const mapped = mapAllCallsRows(rows);
         setCallRecords(mapped);
@@ -299,7 +315,7 @@ const Index = () => {
     };
 
     loadAllCalls();
-  }, [selectedDatabase, selectedCallsCollection, selectedLocations, locations]);
+  }, [selectedDatabase, selectedCallsCollections, selectedLocations, locations]);
 
   const handleRunQueries = async (queries: string[]) => {
     if (!selectedDatabase) return;
@@ -466,19 +482,54 @@ const Index = () => {
                     </div>
 
                     <div>
-                      <label className="text-xs font-medium">Collection</label>
-                      <select
-                        value={selectedCallsCollection}
-                        onChange={(e) => setSelectedCallsCollection(e.target.value)}
-                        className="mt-1 w-full bg-muted border border-border rounded-md px-3 py-2 text-sm"
-                      >
-                        <option value="">Select collection</option>
-                        {collectionNames.map((name) => (
-                          <option key={name} value={name}>
-                            {name}
-                          </option>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs font-medium">Collections</label>
+                        <span className="text-[10px] text-muted-foreground">
+                          {formatLocationSelectionLabel(selectedCallsCollections.length, collectionNames.length)}
+                        </span>
+                      </div>
+
+                      <div className="flex gap-1.5 mb-2">
+                        <button
+                          type="button"
+                          onClick={selectAllCollections}
+                          disabled={collectionNames.length === 0 || collectionsLoading}
+                          className="text-[10px] px-2 py-1 rounded border border-border bg-muted hover:bg-muted/70 disabled:opacity-50"
+                        >
+                          Select all
+                        </button>
+                        <button
+                          type="button"
+                          onClick={clearCollectionSelection}
+                          disabled={collectionNames.length === 0 || collectionsLoading}
+                          className="text-[10px] px-2 py-1 rounded border border-border bg-muted hover:bg-muted/70 disabled:opacity-50"
+                        >
+                          Clear
+                        </button>
+                      </div>
+
+                      <div className="w-full bg-muted/30 border border-border rounded-md p-2 text-sm h-32 overflow-y-auto space-y-1">
+                        {!selectedDatabase && (
+                          <p className="text-[11px] text-muted-foreground">Select database first.</p>
+                        )}
+                        {selectedDatabase && collectionsLoading && (
+                          <p className="text-[11px] text-muted-foreground">Loading collections...</p>
+                        )}
+                        {selectedDatabase && !collectionsLoading && collectionNames.length === 0 && (
+                          <p className="text-[11px] text-muted-foreground">No collections found.</p>
+                        )}
+                        {selectedDatabase && !collectionsLoading && collectionNames.map((name) => (
+                          <label key={name} className="flex items-center gap-2 text-xs text-foreground cursor-pointer hover:bg-muted/50 p-1 rounded-sm">
+                            <input
+                              type="checkbox"
+                              checked={selectedCallsCollections.includes(name)}
+                              onChange={() => toggleCollection(name)}
+                              className="h-3.5 w-3.5 rounded-sm border-primary text-primary focus:ring-primary"
+                            />
+                            <span className="truncate">{name}</span>
+                          </label>
                         ))}
-                      </select>
+                      </div>
                     </div>
 
                     <div>
@@ -493,7 +544,7 @@ const Index = () => {
                         <button
                           type="button"
                           onClick={selectAllLocations}
-                          disabled={!selectedCallsCollection || locations.length === 0 || locationsLoading}
+                          disabled={selectedCallsCollections.length === 0 || locations.length === 0 || locationsLoading}
                           className="text-[10px] px-2 py-1 rounded border border-border bg-muted hover:bg-muted/70 disabled:opacity-50"
                         >
                           Select all
@@ -501,7 +552,7 @@ const Index = () => {
                         <button
                           type="button"
                           onClick={clearLocationSelection}
-                          disabled={!selectedCallsCollection || locations.length === 0 || locationsLoading}
+                          disabled={selectedCallsCollections.length === 0 || locations.length === 0 || locationsLoading}
                           className="text-[10px] px-2 py-1 rounded border border-border bg-muted hover:bg-muted/70 disabled:opacity-50"
                         >
                           All rows
@@ -509,16 +560,16 @@ const Index = () => {
                       </div>
 
                       <div className="mt-2 max-h-56 overflow-auto rounded-md border border-border bg-muted/30 p-2 space-y-1">
-                        {!selectedCallsCollection && (
+                        {selectedCallsCollections.length === 0 && (
                           <p className="text-[11px] text-muted-foreground">Select collection first.</p>
                         )}
-                        {selectedCallsCollection && locationsLoading && (
+                        {selectedCallsCollections.length > 0 && locationsLoading && (
                           <p className="text-[11px] text-muted-foreground">Loading locations...</p>
                         )}
-                        {selectedCallsCollection && !locationsLoading && locations.length === 0 && (
+                        {selectedCallsCollections.length > 0 && !locationsLoading && locations.length === 0 && (
                           <p className="text-[11px] text-muted-foreground">No locations found.</p>
                         )}
-                        {selectedCallsCollection && !locationsLoading && locations.map((name) => (
+                        {selectedCallsCollections.length > 0 && !locationsLoading && locations.map((name) => (
                           <label key={name} className="flex items-center gap-2 text-xs text-foreground cursor-pointer">
                             <input
                               type="checkbox"
@@ -542,7 +593,7 @@ const Index = () => {
                   <p className="text-[11px] text-muted-foreground mb-1">Active filters</p>
                   <div className="flex flex-wrap gap-1.5">
                     <Badge variant="secondary" className="text-[10px]">DB: {selectedDatabase || "-"}</Badge>
-                    <Badge variant="secondary" className="text-[10px]">Collection: {selectedCallsCollection || "-"}</Badge>
+                    <Badge variant="secondary" className="text-[10px]">Collections: {selectedCallsCollections.length === 0 ? "None" : selectedCallsCollections.length}</Badge>
                     <Badge variant="secondary" className="text-[10px]">
                       Locations: {selectedLocations.length === 0 ? "All" : selectedLocations.length}
                     </Badge>

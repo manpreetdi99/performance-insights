@@ -81,8 +81,11 @@ export async function fetchCollectionNames(database: string): Promise<string[]> 
   return json.collections;
 }
 
-export async function fetchLocations(database: string, collection: string): Promise<string[]> {
-  const params = new URLSearchParams({ database, collection });
+export async function fetchLocations(database: string, collections: string[] = []): Promise<string[]> {
+  const params = new URLSearchParams({ database });
+  for (const collection of collections) {
+    if (collection) params.append("collection", collection);
+  }
   const json = await requestJson<{ locations: string[] }>(`/api/locations?${params.toString()}`);
   return json.locations;
 }
@@ -107,10 +110,13 @@ export interface AllCallsRow {
 
 export async function fetchAllCalls(
   database: string,
-  collection: string,
+  collections: string[] = [],
   locations: string[] = [],
 ): Promise<AllCallsRow[]> {
-  const params = new URLSearchParams({ database, collection });
+  const params = new URLSearchParams({ database });
+  for (const collection of collections) {
+    if (collection) params.append("collection", collection);
+  }
   for (const location of locations) {
     params.append("location", location);
   }

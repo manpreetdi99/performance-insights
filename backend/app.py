@@ -22,7 +22,7 @@ class QueryRequest(BaseModel):
 @app.get("/api/calls")
 def list_calls(
     database: str = Query(..., min_length=1),
-    collection: str = Query(..., min_length=1),
+    collection: list[str] | None = Query(default=None),
     location: list[str] | None = Query(default=None),
 ):
     try:
@@ -55,11 +55,17 @@ def list_calls(
             LEFT JOIN SessionsB SB ON SB.SessionId = CA.SessionId
 			LEFT JOIN AnalysisCommentSessionsBridge ACSB ON ACSB.sessionID = CA.SessionId
 			LEFT JOIN AnalysisComment AC ON ACSB.commentId = AC.commentID
-            WHERE  DF.CollectionName = ?
-            and (S.Valid = 1 or S.Valid = 0)
+            WHERE (S.Valid = 1 or S.Valid = 0)
         """
 
-        params: list[object] = [collection]
+        params: list[object] = []
+        selected_collections = [col for col in (collection or []) if col and col.strip()]
+
+        if selected_collections:
+            placeholders = ", ".join(["?"] * len(selected_collections))
+            query += f" AND DF.CollectionName IN ({placeholders})"
+            params.extend(selected_collections)
+
         selected_locations = [loc for loc in (location or []) if loc and loc.strip()]
 
         if selected_locations:
@@ -88,22 +94,28 @@ def list_calls(
 @app.get("/api/locations")
 def list_locations(
     database: str = Query(..., min_length=1),
-    collection: str = Query(..., min_length=1),
+    collection: list[str] | None = Query(default=None),
 ):
     try:
         conn = get_connection(database)
         cursor = conn.cursor()
 
-        cursor.execute(
-            """
+        query = """
             SELECT DISTINCT ASideLocation
             FROM FileList
-            WHERE CollectionName = ?
-              AND ASideLocation IS NOT NULL
-            ORDER BY ASideLocation
-            """,
-            (collection,),
-        )
+            WHERE ASideLocation IS NOT NULL
+        """
+        params = []
+        
+        selected_collections = [col for col in (collection or []) if col and col.strip()]
+        if selected_collections:
+            placeholders = ", ".join(["?"] * len(selected_collections))
+            query += f" AND CollectionName IN ({placeholders})"
+            params.extend(selected_collections)
+            
+        query += " ORDER BY ASideLocation"
+
+        cursor.execute(query, tuple(params))
 
         rows = cursor.fetchall()
         conn.close()
