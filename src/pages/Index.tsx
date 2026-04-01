@@ -51,8 +51,11 @@ const normalizeStatus = (status: string | null | undefined): CallRecord["status"
   return "completed";
 };
 
-const getAllCallsRowClass = (status: string | null | undefined): string => {
-  const normalized = (status || "").toLowerCase();
+const getAllCallsRowClass = (row: AllCallsRow): string => {
+  if (row.isValid === 0) {
+    return "bg-red-500/25 hover:bg-red-500/35 border-red-500/40";
+  }
+  const normalized = (row.status || "").toLowerCase();
   if (normalized.includes("system release") || normalized.includes("system realase")) {
     return "bg-violet-500/25 hover:bg-violet-500/35 border-violet-500/40";
   }
@@ -692,7 +695,14 @@ const Index = () => {
                               </tr>
                             )}
                             <tr
-                              className={`border-b border-border/60 ${getAllCallsRowClass(row.status)}`}
+                              className={`border-b border-border/60 ${getAllCallsRowClass(row)} cursor-pointer transition-colors`}
+                              onClick={() => {
+                                const record = callRecords.find((c) => c.callId === row.SessionId);
+                                if (record) {
+                                  setSelectedCall(record);
+                                  setActiveTab("detail");
+                                }
+                              }}
                             >
                               <td className="px-2 py-2 text-foreground">{row.Location ?? "N/A"}</td>
                               <td className="px-2 py-2 font-mono text-foreground break-words max-w-[120px]">{row.SessionId}</td>
@@ -730,7 +740,7 @@ const Index = () => {
 
           <TabsContent value="detail">
             {selectedCall ? (
-              <CallDetail call={selectedCall} onBack={() => setActiveTab("calls")} />
+              <CallDetail call={selectedCall} database={selectedDatabase} onBack={() => setActiveTab("calls")} />
             ) : (
               <div className="flex flex-col items-center justify-center py-20 text-center">
                 <Phone className="h-10 w-10 text-muted-foreground mb-3" />

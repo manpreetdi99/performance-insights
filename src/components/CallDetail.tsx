@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   ArrowLeft, Phone, Signal, Clock, Activity, Gauge, ArrowDown, ArrowUp,
@@ -5,12 +6,22 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { CallRecord } from "@/lib/callData";
+import { fetchLteValues } from "@/lib/api";
 
+/**
+ * Interface για τα props του Component CallDetail.
+ * Η TypeScript μας εγγυάται ότι όποιος καλεί αυτό το Component, 
+ * είναι ΥΠΟΧΡΕΩΜΕΝΟΣ να περάσει ένα αντικείμενο `call` (τύπου `CallRecord`) 
+ * και μια συνάρτηση `onBack` που δεν επιστρέφει τίποτα (`() => void`).
+ */
 interface CallDetailProps {
   call: CallRecord;
+  database: string;
   onBack: () => void;
 }
 
+// Λεξικά στυλιζαρίσματος. Εδώ δεν γράψαμε Type γιατί η TypeScript καταλαβαίνει
+// αυτόματα τη δομή τους (Inferred Typing).
 const statusColors = {
   success: "border-success/30 bg-success/5",
   warning: "border-warning/30 bg-warning/5",
@@ -29,6 +40,11 @@ const statusTextColors = {
   error: "text-destructive",
 };
 
+/**
+ * Παράδειγμα συνάρτησης με Types.
+ * Δέχεται σαν είσοδο (iso) ένα string και εγγυάται(: string) 
+ * ότι το αποτέλεσμά της θα είναι επίσης string.
+ */
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString("el-GR", {
     day: "2-digit",
@@ -40,11 +56,32 @@ function formatDateTime(iso: string): string {
   });
 }
 
-const CallDetail = ({ call, onBack }: CallDetailProps) => {
+const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
+  const [lteValues, setLteValues] = useState<number[]>([]);
+  const [isLoadingLte, setIsLoadingLte] = useState(false);
+
+  useEffect(() => {
+    async function loadLte() {
+      setIsLoadingLte(true);
+      try {
+        const res = await fetchLteValues(database, call.callId);
+        setLteValues(res.lteValues || []);
+      } catch (err) {
+        console.error("Failed to load LTE values", err);
+      } finally {
+        setIsLoadingLte(false);
+      }
+    }
+    if (call.callId && database) {
+      loadLte();
+    }
+  }, [database, call.callId]);
+
   const metrics = [
     { label: "Download", value: `${call.downloadSpeed.toFixed(1)} Mbps`, icon: ArrowDown, color: "text-primary" },
     { label: "Upload", value: `${call.uploadSpeed.toFixed(1)} Mbps`, icon: ArrowUp, color: "text-accent" },
     { label: "Latency", value: `${call.latency.toFixed(0)} ms`, icon: Gauge, color: "text-warning" },
+    { label: "AVG Mos", value: `${call.avgMos.toFixed(2)}`, icon: Gauge, color: "text-warning" },
     { label: "Jitter", value: `${call.jitter.toFixed(1)} ms`, icon: Activity, color: "text-chart-4" },
     { label: "Packet Loss", value: `${call.packetLoss.toFixed(2)}%`, icon: Wifi, color: call.packetLoss > 2 ? "text-destructive" : "text-success" },
     { label: "Setup Time", value: `${call.setupTime_ms} ms`, icon: Timer, color: call.setupTime_ms > 500 ? "text-warning" : "text-success" },
@@ -74,7 +111,7 @@ const CallDetail = ({ call, onBack }: CallDetailProps) => {
       <div className="bg-card border border-border rounded-lg p-5">
         <div className="flex items-start justify-between mb-4">
           <div>
-            <h2 className="text-lg font-bold font-mono text-foreground">{call.callId}</h2>
+            <h2 className="text-lg font-bold font-mono text-foreground">{call.region} · {call.callId}</h2>
             <p className="text-sm text-muted-foreground mt-0.5">
               {call.callType} · {call.technology} · {call.operator} · {call.region}
             </p>
@@ -90,8 +127,7 @@ const CallDetail = ({ call, onBack }: CallDetailProps) => {
 
         {/* MOS Score bar */}
         <div className="flex items-center gap-3">
-          <span className="text-xs text-muted-foreground">MOS Score</span>
-          <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+          {/* <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
             <motion.div
               initial={{ width: 0 }}
               animate={{ width: `${(call.avgMos / 5) * 100}%` }}
@@ -100,17 +136,17 @@ const CallDetail = ({ call, onBack }: CallDetailProps) => {
                 call.avgMos >= 3.5 ? "bg-success" : call.avgMos >= 2.5 ? "bg-warning" : "bg-destructive"
               }`}
             />
-          </div>
-          <span className={`text-sm font-bold font-mono ${
+          </div> */}
+          {/* <span className={`text-sm font-bold font-mono ${
             call.avgMos >= 3.5 ? "text-success" : call.avgMos >= 2.5 ? "text-warning" : "text-destructive"
           }`}>
             {call.avgMos > 0 ? call.avgMos.toFixed(2) : "N/A"}
-          </span>
+          </span> */}
         </div>
       </div>
 
       {/* Metrics Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
         {metrics.map((m, i) => (
           <motion.div
             key={m.label}
@@ -124,6 +160,28 @@ const CallDetail = ({ call, onBack }: CallDetailProps) => {
             <p className="text-sm font-bold font-mono text-foreground mt-0.5">{m.value}</p>
           </motion.div>
         ))}
+      </div>
+
+      {/* LTE Measurements Panel */}
+      <div className="bg-card border border-border rounded-lg p-5">
+        <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
+          <Signal className="h-4 w-4 text-primary" />
+          LTE Measurements (Message IDs)
+        </h3>
+        
+        {isLoadingLte ? (
+          <p className="text-xs text-muted-foreground">Φόρτωση LTE δεδομένων...</p>
+        ) : lteValues && lteValues.length > 0 ? (
+          <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
+            {lteValues.map((val, idx) => (
+              <span key={idx} className="px-2 py-1 bg-muted text-foreground text-xs rounded-md border border-border font-mono">
+                {val}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">Δεν βρέθηκαν LTE δεδομένα για αυτήν την κλήση.</p>
+        )}
       </div>
 
       {/* Event Timeline */}

@@ -1,6 +1,7 @@
 import type { BenchmarkResult } from "@/types/benchmark";
 
-const API_BASE_URL = "http://localhost:8000";
+// Βάλε εδώ το public (local) tunnel URL σου, π.χ. "https://my-tunnel.ngrok.io" ή χρησιμοποίησε το environment variable
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 export class ApiClientError extends Error {
   code: string;
@@ -106,6 +107,7 @@ export interface AllCallsRow {
   longitude: number | null;
   ASideFileName?: string | null;
   comment: string | null;
+  isValid?: number | null;
 }
 
 export async function fetchAllCalls(
@@ -123,6 +125,15 @@ export async function fetchAllCalls(
   const json = await requestJson<{ rows: AllCallsRow[] }>(`/api/calls?${params.toString()}`);
   return json.rows;
 }
+
+export async function fetchLteValues(
+  database: string,
+  session_id: string
+): Promise<{ lteValues: any[] }> {
+  const params = new URLSearchParams({ database, session_id });
+  return requestJson(`/api/lte_values?${params.toString()}`);
+}
+
 
 export async function runBenchmarkApi(
   database: string,

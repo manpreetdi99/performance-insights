@@ -47,7 +47,8 @@ def list_calls(
                 COALESCE (AC.Comment, s.InvalidReason) AS comment,
                 DF.ASideFileName,
                 POS.Latitude AS latitude,
-                POS.Longitude AS longitude
+                POS.Longitude AS longitude,
+                S.Valid AS isValid
             FROM CallAnalysis CA
             LEFT JOIN FileList DF ON CA.FileId = DF.FileId
             LEFT JOIN Position POS ON CA.PosId = POS.PosId
