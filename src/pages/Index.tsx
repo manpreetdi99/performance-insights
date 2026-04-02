@@ -153,6 +153,7 @@ const Index = () => {
   const [totalTime, setTotalTime] = useState(0);
   const [selectedCall, setSelectedCall] = useState<CallRecord | null>(null);
   const [activeTab, setActiveTab] = useLocalStorage<string>("perf-insights-active-tab", "queries");
+  const [sessionValidFilter, setSessionValidFilter] = useState<"all" | "1" | "0">("all");
 
   const toggleCollection = (collectionName: string) => {
     setSelectedCallsCollections((prev) =>
@@ -191,12 +192,14 @@ const Index = () => {
     setSelectedDatabase("");
     setSelectedCallsCollections([]);
     setSelectedLocations([]);
+    setSessionValidFilter("all");
   };
 
   const handleDatabaseChange = (newDb: string) => {
     setSelectedDatabase(newDb);
     setSelectedCallsCollections([]);
     setSelectedLocations([]);
+    setSessionValidFilter("all");
     setLocations([]);
     setAllCallsRows([]);
     setCallRecords([]);
@@ -346,6 +349,19 @@ const Index = () => {
       setIsRunning(false);
     }
   };
+  const filteredAllCallsRows = useMemo(() => {
+    return allCallsRows.filter((row) => {
+      if (sessionValidFilter === "1") return row.isValid === 1;
+      if (sessionValidFilter === "0") return row.isValid === 0;
+      return true;
+    });
+  }, [allCallsRows, sessionValidFilter]);
+
+  const filteredCallRecords = useMemo(() => {
+    if (sessionValidFilter === "all") return callRecords;
+    const validIds = new Set(filteredAllCallsRows.map((r) => r.SessionId));
+    return callRecords.filter((c) => validIds.has(c.callId));
+  }, [callRecords, filteredAllCallsRows, sessionValidFilter]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -387,7 +403,7 @@ const Index = () => {
                 >
                 Clear filters
               </button>
-            <span>{callRecords.length} calls recorded</span>
+            <span>{filteredCallRecords.length} calls recorded</span>
             {results.length > 0 && (
               <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-1.5">
                 <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse-glow" />
@@ -613,6 +629,35 @@ const Index = () => {
                         If no location is selected, all locations are included.
                       </p>
                     </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs font-medium">Session Valid</label>
+                      </div>
+                      <div className="flex gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setSessionValidFilter("all")}
+                          className={`text-[10px] px-2 py-1 rounded border ${sessionValidFilter === "all" ? "bg-primary text-primary-foreground border-primary" : "border-border bg-muted hover:bg-muted/70"}`}
+                        >
+                          All
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSessionValidFilter("1")}
+                          className={`text-[10px] px-2 py-1 rounded border ${sessionValidFilter === "1" ? "bg-primary text-primary-foreground border-primary" : "border-border bg-muted hover:bg-muted/70"}`}
+                        >
+                          Valid
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSessionValidFilter("0")}
+                          className={`text-[10px] px-2 py-1 rounded border ${sessionValidFilter === "0" ? "bg-primary text-primary-foreground border-primary" : "border-border bg-muted hover:bg-muted/70"}`}
+                        >
+                          Invalid
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -624,6 +669,11 @@ const Index = () => {
                     <Badge variant="secondary" className="text-[10px]">
                       Locations: {selectedLocations.length === 0 ? "All" : selectedLocations.length}
                     </Badge>
+                    {sessionValidFilter !== "all" && (
+                      <Badge variant="secondary" className="text-[10px]">
+                        Session: {sessionValidFilter === "1" ? "Valid" : "Invalid"}
+                      </Badge>
+                    )}
                   </div>
                 </div>
               </aside>
@@ -635,7 +685,7 @@ const Index = () => {
                     <p className="text-xs text-muted-foreground">
                       {callsLoading
                         ? "Loading..."
-                        : `${allCallsRows.length} rows`}
+                        : `${filteredAllCallsRows.length} rows`}
                     </p>
                   </div>
                 </div>
@@ -662,20 +712,20 @@ const Index = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {!callsLoading && allCallsRows.length === 0 && (
+                      {!callsLoading && filteredAllCallsRows.length === 0 && (
                         <tr>
                           <td colSpan={12} className="px-2 py-6 text-center text-muted-foreground">
-                            Select a collection to load calls.
+                            {allCallsRows.length === 0 ? "Select a collection to load calls." : "No rows match the selected filters."}
                           </td>
                         </tr>
                       )}
                       {/* να βγαζει την γραμμη end of file*/}
-                      {allCallsRows.map((row, idx) => {
+                      {filteredAllCallsRows.map((row, idx) => {
                         const currentFileTime = getFileDateTime(row.ASideFileName);
                         let showEndOfFile = false;
                         
                         if (idx > 0) {
-                          const prevFileTime = getFileDateTime(allCallsRows[idx - 1].ASideFileName);
+                          const prevFileTime = getFileDateTime(filteredAllCallsRows[idx - 1].ASideFileName);
                           // Show "End of File" if the date/time part of the filename changed
                           if (prevFileTime !== null && currentFileTime !== null && prevFileTime !== currentFileTime) {
                             showEndOfFile = true;
@@ -730,7 +780,7 @@ const Index = () => {
 
           <TabsContent value="map">
             <CallsMap
-              calls={callRecords}
+              calls={filteredCallRecords}
               onSelectCall={(call) => {
                 setSelectedCall(call);
                 setActiveTab("detail");

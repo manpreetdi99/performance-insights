@@ -1,7 +1,7 @@
 import type { BenchmarkResult } from "@/types/benchmark";
 
 // Βάλε εδώ το public (local) tunnel URL σου, π.χ. "https://my-tunnel.ngrok.io" ή χρησιμοποίησε το environment variable
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://192.168.10.44:8000";
 
 export class ApiClientError extends Error {
   code: string;

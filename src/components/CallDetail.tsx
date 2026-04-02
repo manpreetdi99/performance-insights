@@ -57,7 +57,7 @@ function formatDateTime(iso: string): string {
 }
 
 const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
-  const [lteValues, setLteValues] = useState<number[]>([]);
+  const [lteValues, setLteValues] = useState<any[]>([]);
   const [isLoadingLte, setIsLoadingLte] = useState(false);
 
   useEffect(() => {
@@ -166,18 +166,53 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
       <div className="bg-card border border-border rounded-lg p-5">
         <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
           <Signal className="h-4 w-4 text-primary" />
-          LTE Measurements (Message IDs)
+          LTE Measurements
         </h3>
         
         {isLoadingLte ? (
           <p className="text-xs text-muted-foreground">Φόρτωση LTE δεδομένων...</p>
         ) : lteValues && lteValues.length > 0 ? (
-          <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
-            {lteValues.map((val, idx) => (
-              <span key={idx} className="px-2 py-1 bg-muted text-foreground text-xs rounded-md border border-border font-mono">
-                {val}
-              </span>
-            ))}
+          <div className="overflow-x-auto max-h-[300px] overflow-y-auto  flex justify-end">
+            <table className="w-5/5 text-xs text-center">
+              <thead className="sticky top-0 bg-muted border-b border-border z-10">
+                <tr>
+                  {/* <th className="px-2 py-2 font-semibold">MsgId</th> */}
+                  
+                  <th className="px-2 py-2 font-semibold">EARFCN</th>
+                  {/* <th className="px-2 py-2 font-semibold">PhyCellId</th> */}
+                  <th className="px-2 py-2 font-semibold">RSRP</th>
+                  <th className="px-2 py-2 font-semibold">RSRQ</th>
+                  {/* <th className="px-2 py-2 font-semibold">SINR0</th> */}
+                  {/* <th className="px-2 py-2 font-semibold">SINR1</th> */}
+                  <th className="px-2 py-2 font-semibold">MsgTime</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/50">
+                {lteValues.map((val, idx) => {
+                  const rsrpAbs = Math.abs(Number(val.RSRP));
+                  const rsrpColor = rsrpAbs >= 120 ? "text-destructive" : rsrpAbs >= 115 ? "text-warning" : "text-primary";
+                  const rsrqAbs = Math.abs(Number(val.RSRQ));
+                  const rsrqColor = rsrqAbs >= 18 ? "text-destructive" : rsrqAbs >= 16 ? "text-warning" : "text-primary";
+
+                  return (
+                    <tr key={idx} className="hover:bg-muted/30">
+                      {/* <td className="px-2 py-1.5 font-mono">{val.MsgId}</td> */}
+                      <td className="px-2 py-1.5 font-mono">{val.EARFCN}</td>
+                      {/* <td className="px-2 py-1.5 font-mono">{val.PhyCellId}</td> */}
+                      <td className={`px-2 py-1.5 font-mono font-bold ${rsrpColor}`}>
+                        {val.RSRP}
+                      </td>
+                      <td className={`px-2 py-1.5 font-mono font-bold ${rsrqColor}`}>
+                        {val.RSRQ}
+                      </td>
+                      {/* <td className="px-2 py-1.5 font-mono text-success">{val.SINR0}</td> */}
+                      {/* <td className="px-2 py-1.5 font-mono text-success">{val.SINR1}</td> */}
+                      <td className="px-2 py-1.5">{formatDateTime(val.MsgTime)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         ) : (
           <p className="text-xs text-muted-foreground">Δεν βρέθηκαν LTE δεδομένα για αυτήν την κλήση.</p>
