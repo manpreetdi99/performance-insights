@@ -33,7 +33,8 @@ def list_calls(
             SELECT
                 DF.ASideLocation AS Location,
                 CA.SessionId,
-                CONCAT(CA.technology,' -- ',CA.callmode) as technology,
+                CA.technology as technology,
+                CA.callmode AS callMode,
                 CA.callType,
                 CA.callDir,
                 CA.callStatus AS status,
@@ -235,5 +236,42 @@ def get_lte_values(
         conn.close()
 
         return {"lteValues": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/gsm_values")
+def get_gsm_values(
+    database: str = Query(..., min_length=1),
+    session_id: str = Query(..., min_length=1)
+):
+    try:
+        conn = get_connection(database)
+        cursor = conn.cursor()
+
+        query = """
+            SELECT [MsgId]
+                  ,[SessionId]
+                  ,[MsgTime]
+                  ,[PosId]
+                  ,[NetworkId]
+                  ,[RxLevSub]
+                  ,[RxQualSub]
+              FROM [GSMMeasReport]
+              WHERE [SessionId] = ?
+              ORDER BY MsgTime
+        """
+
+        cursor.execute(query, (session_id,))
+
+        columns = [col[0] for col in cursor.description] if cursor.description else []
+        rows = cursor.fetchall() if cursor.description else []
+
+        data = []
+        for row in rows:
+            data.append({columns[idx]: row[idx] for idx in range(len(columns))})
+
+        conn.close()
+
+        return {"gsmValues": data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

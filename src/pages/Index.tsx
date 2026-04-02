@@ -84,6 +84,7 @@ const mapAllCallsRows = (rows: AllCallsRow[]): CallRecord[] => {
       operator: "N/A",
       region: row.Location || "Unknown",
       technology: row.technology || "N/A",
+      callMode: row.callMode || "N/A",
       callType: row.callType || "Session",
       status,
       setupTime_ms: row.setupTime != null ? Number(row.setupTime) : 0,
@@ -154,6 +155,18 @@ const Index = () => {
   const [selectedCall, setSelectedCall] = useState<CallRecord | null>(null);
   const [activeTab, setActiveTab] = useLocalStorage<string>("perf-insights-active-tab", "queries");
   const [sessionValidFilter, setSessionValidFilter] = useState<"all" | "1" | "0">("all");
+  const [lastClickedRowId, setLastClickedRowId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (activeTab === "calls" && lastClickedRowId) {
+      setTimeout(() => {
+        const el = document.getElementById(lastClickedRowId);
+        if (el) {
+          el.scrollIntoView({ behavior: "auto", block: "center" });
+        }
+      }, 100);
+    }
+  }, [activeTab, lastClickedRowId]);
 
   const toggleCollection = (collectionName: string) => {
     setSelectedCallsCollections((prev) =>
@@ -696,6 +709,7 @@ const Index = () => {
                         <th className="px-2 py-2 font-semibold">Location</th>
                         <th className="px-2 py-2 font-semibold">SessionId</th> 
                         <th className="px-2 py-2 font-semibold">Technology</th>
+                        <th className="px-2 py-2 font-semibold">Call Mode</th>
                         <th className="px-2 py-2 font-semibold">Call Type</th>
                         <th className="px-2 py-2 font-semibold">Call Dir</th>
                         <th className="px-2 py-2 font-semibold">Status</th>
@@ -714,7 +728,7 @@ const Index = () => {
                     <tbody>
                       {!callsLoading && filteredAllCallsRows.length === 0 && (
                         <tr>
-                          <td colSpan={12} className="px-2 py-6 text-center text-muted-foreground">
+                          <td colSpan={13} className="px-2 py-6 text-center text-muted-foreground">
                             {allCallsRows.length === 0 ? "Select a collection to load calls." : "No rows match the selected filters."}
                           </td>
                         </tr>
@@ -737,7 +751,7 @@ const Index = () => {
                             {showEndOfFile && (
                               <tr className="bg-muted/50 border-y border-border">
                                 <td 
-                                  colSpan={12} 
+                                  colSpan={13} 
                                   className="px-2 py-10 text-center text-xs font-semibold text-red-500 uppercase tracking-widest"
                                   >
                                   End of File
@@ -745,8 +759,11 @@ const Index = () => {
                               </tr>
                             )}
                             <tr
+                              
+                              id={`call-row-${row.SessionId}-${idx}`}
                               className={`border-b border-border/60 ${getAllCallsRowClass(row)} cursor-pointer transition-colors`}
                               onClick={() => {
+                                setLastClickedRowId(`call-row-${row.SessionId}-${idx}`);
                                 const record = callRecords.find((c) => c.callId === row.SessionId);
                                 if (record) {
                                   setSelectedCall(record);
@@ -758,6 +775,7 @@ const Index = () => {
                               <td className="px-2 py-2 font-mono text-foreground break-words max-w-[120px]">{row.SessionId}</td>
                               
                               <td className="px-2 py-2 text-foreground">{row.technology ?? "N/A"}</td>
+                              <td className="px-2 py-2 text-foreground">{row.callMode ?? "N/A"}</td>
                               <td className="px-2 py-2 text-foreground">{row.callType ?? "N/A"}</td>
                               <td className="px-2 py-2 text-foreground">{row.callDir ?? "N/A"}</td>
                               <td className="px-2 py-2 text-foreground">{row.status ?? "N/A"}</td>

@@ -94,6 +94,7 @@ export async function fetchLocations(database: string, collections: string[] = [
 export interface AllCallsRow {
   Location: string | null;
   SessionId: string;
+  callMode: string | null;
   callType: string | null;
   technology: string | null;
   callDir: string | null;
@@ -132,6 +133,14 @@ export async function fetchLteValues(
 ): Promise<{ lteValues: any[] }> {
   const params = new URLSearchParams({ database, session_id });
   return requestJson(`/api/lte_values?${params.toString()}`);
+}
+
+export async function fetchGsmValues(
+  database: string,
+  session_id: string
+): Promise<{ gsmValues: any[] }> {
+  const params = new URLSearchParams({ database, session_id });
+  return requestJson(`/api/gsm_values?${params.toString()}`);
 }
 
 

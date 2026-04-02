@@ -24,6 +24,7 @@ export interface CallRecord {
   operator: string;
   region: string;
   technology: string;
+  callMode?: string | null;
   callType: string;
   status: "completed" | "dropped" | "failed"; // Ενεργοποιούμε το auto-complete του IDE
   setupTime_ms: number;

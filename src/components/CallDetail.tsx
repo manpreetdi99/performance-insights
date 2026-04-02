@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { CallRecord } from "@/lib/callData";
-import { fetchLteValues } from "@/lib/api";
+import { fetchLteValues, fetchGsmValues } from "@/lib/api";
 
 /**
  * Interface για τα props του Component CallDetail.
@@ -57,25 +57,30 @@ function formatDateTime(iso: string): string {
 }
 
 const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
-  const [lteValues, setLteValues] = useState<any[]>([]);
-  const [isLoadingLte, setIsLoadingLte] = useState(false);
+  const [radioValues, setRadioValues] = useState<any[]>([]);
+  const [isLoadingRadio, setIsLoadingRadio] = useState(false);
 
   useEffect(() => {
-    async function loadLte() {
-      setIsLoadingLte(true);
+    async function loadRadio() {
+      setIsLoadingRadio(true);
       try {
-        const res = await fetchLteValues(database, call.callId);
-        setLteValues(res.lteValues || []);
+        if (call.callMode === "CS") {
+          const res = await fetchGsmValues(database, call.callId);
+          setRadioValues(res.gsmValues || []);
+        } else {
+          const res = await fetchLteValues(database, call.callId);
+          setRadioValues(res.lteValues || []);
+        }
       } catch (err) {
-        console.error("Failed to load LTE values", err);
+        console.error("Failed to load radio values", err);
       } finally {
-        setIsLoadingLte(false);
+        setIsLoadingRadio(false);
       }
     }
     if (call.callId && database) {
-      loadLte();
+      loadRadio();
     }
-  }, [database, call.callId]);
+  }, [database, call.callId, call.callMode]);
 
   const metrics = [
     { label: "Download", value: `${call.downloadSpeed.toFixed(1)} Mbps`, icon: ArrowDown, color: "text-primary" },
@@ -162,104 +167,124 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
         ))}
       </div>
 
-      {/* LTE Measurements Panel */}
-      <div className="bg-card border border-border rounded-lg p-5">
-        <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
-          <Signal className="h-4 w-4 text-primary" />
-          LTE Measurements
-        </h3>
-        
-        {isLoadingLte ? (
-          <p className="text-xs text-muted-foreground">Φόρτωση LTE δεδομένων...</p>
-        ) : lteValues && lteValues.length > 0 ? (
-          <div className="overflow-x-auto max-h-[300px] overflow-y-auto  flex justify-end">
-            <table className="w-5/5 text-xs text-center">
-              <thead className="sticky top-0 bg-muted border-b border-border z-10">
-                <tr>
-                  {/* <th className="px-2 py-2 font-semibold">MsgId</th> */}
-                  
-                  <th className="px-2 py-2 font-semibold">EARFCN</th>
-                  {/* <th className="px-2 py-2 font-semibold">PhyCellId</th> */}
-                  <th className="px-2 py-2 font-semibold">RSRP</th>
-                  <th className="px-2 py-2 font-semibold">RSRQ</th>
-                  {/* <th className="px-2 py-2 font-semibold">SINR0</th> */}
-                  {/* <th className="px-2 py-2 font-semibold">SINR1</th> */}
-                  <th className="px-2 py-2 font-semibold">MsgTime</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/50">
-                {lteValues.map((val, idx) => {
-                  const rsrpAbs = Math.abs(Number(val.RSRP));
-                  const rsrpColor = rsrpAbs >= 120 ? "text-destructive" : rsrpAbs >= 115 ? "text-warning" : "text-primary";
-                  const rsrqAbs = Math.abs(Number(val.RSRQ));
-                  const rsrqColor = rsrqAbs >= 18 ? "text-destructive" : rsrqAbs >= 16 ? "text-warning" : "text-primary";
+      {/* Panels Side by Side */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* Event Timeline (Αριστερά) */}
+        <div className="bg-card border border-border rounded-lg p-5">
+          <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
+            <Clock className="h-4 w-4 text-primary" />
+            Event Timeline
+          </h3>
 
-                  return (
-                    <tr key={idx} className="hover:bg-muted/30">
-                      {/* <td className="px-2 py-1.5 font-mono">{val.MsgId}</td> */}
-                      <td className="px-2 py-1.5 font-mono">{val.EARFCN}</td>
-                      {/* <td className="px-2 py-1.5 font-mono">{val.PhyCellId}</td> */}
-                      <td className={`px-2 py-1.5 font-mono font-bold ${rsrpColor}`}>
-                        {val.RSRP}
-                      </td>
-                      <td className={`px-2 py-1.5 font-mono font-bold ${rsrqColor}`}>
-                        {val.RSRQ}
-                      </td>
-                      {/* <td className="px-2 py-1.5 font-mono text-success">{val.SINR0}</td> */}
-                      {/* <td className="px-2 py-1.5 font-mono text-success">{val.SINR1}</td> */}
-                      <td className="px-2 py-1.5">{formatDateTime(val.MsgTime)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">Δεν βρέθηκαν LTE δεδομένα για αυτήν την κλήση.</p>
-        )}
-      </div>
+          <div className="relative">
+            {/* Vertical line */}
+            <div className="absolute left-[18px] top-2 bottom-2 w-px bg-border" />
 
-      {/* Event Timeline */}
-      <div className="bg-card border border-border rounded-lg p-5">
-        <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
-          <Clock className="h-4 w-4 text-primary" />
-          Event Timeline
-        </h3>
-
-        <div className="relative">
-          {/* Vertical line */}
-          <div className="absolute left-[18px] top-2 bottom-2 w-px bg-border" />
-
-          <div className="space-y-3">
-            {call.events.map((event, i) => {
-              const EventIcon = statusIcons[event.status];
-              return (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.08 }}
-                  className={`relative flex items-start gap-3 pl-2 py-2 px-3 rounded-md border ${statusColors[event.status]}`}
-                >
-                  <div className="relative z-10 mt-0.5">
-                    <EventIcon className={`h-4 w-4 ${statusTextColors[event.status]}`} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-foreground">{event.event}</span>
-                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                        {event.duration_ms > 0 && (
-                          <span className="font-mono">{event.duration_ms}ms</span>
-                        )}
-                        <span>{new Date(event.timestamp).toLocaleTimeString("el-GR")}</span>
-                      </div>
+            <div className="space-y-3">
+              {call.events.map((event, i) => {
+                const EventIcon = statusIcons[event.status];
+                return (
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.08 }}
+                    className={`relative flex items-start gap-3 pl-2 py-2 px-3 rounded-md border ${statusColors[event.status]}`}
+                  >
+                    <div className="relative z-10 mt-0.5">
+                      <EventIcon className={`h-4 w-4 ${statusTextColors[event.status]}`} />
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">{event.details}</p>
-                  </div>
-                </motion.div>
-              );
-            })}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-foreground">{event.event}</span>
+                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                          {event.duration_ms > 0 && (
+                            <span className="font-mono">{event.duration_ms}ms</span>
+                          )}
+                          <span>{new Date(event.timestamp).toLocaleTimeString("el-GR")}</span>
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">{event.details}</p>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
           </div>
+        </div>
+
+        {/* Radio Measurements Panel (Δεξιά) */}
+        <div className="bg-card border border-border rounded-lg p-5">
+          <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
+            <Signal className="h-4 w-4 text-primary" />
+            {call.callMode === "CS" ? "GSM Measurements" : "LTE Measurements"}
+          </h3>
+          
+          {isLoadingRadio ? (
+            <p className="text-xs text-muted-foreground">Φόρτωση δεδομένων...</p>
+          ) : radioValues && radioValues.length > 0 ? (
+            <div className="overflow-x-auto max-h-[300px] overflow-y-auto flex">
+              {call.callMode === "CS" ? (
+                <table className="w-full text-xs text-center">
+                  <thead className="sticky top-0 bg-muted border-b border-border z-10">
+                    <tr>
+                      <th className="px-2 py-2 font-semibold">SessionId</th>
+                      <th className="px-2 py-2 font-semibold">RxLevSub</th>
+                      <th className="px-2 py-2 font-semibold">RxQualSub</th>
+                      <th className="px-2 py-2 font-semibold">MsgTime</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/50">
+                    {radioValues.map((val, idx) => {
+                      const rxAbs = Math.abs(Number(val.RxLevSub));
+                      const rxColor = rxAbs >= 95 ? "text-destructive" : rxAbs >= 90 ? "text-warning" : "text-primary";
+                      const rxqAbs = Math.abs(Number(val.RxQualSub));
+                      const rsrqColor = rxqAbs >= 6 ? "text-destructive" : rxqAbs >= 5 ? "text-warning" : "text-primary";
+
+                      return (
+                        <tr key={idx} className="hover:bg-muted/30">
+                          <td className="px-2 py-2 font-mono">{val.SessionId}</td>
+                          <td className={`px-2 py-2 font-mono font-bold ${rxColor}`}>{val.RxLevSub}</td>
+                          <td className={`px-2 py-2 font-mono font-bold ${rsrqColor}`}>{val.RxQualSub}</td>
+                          <td className="px-2 py-2">{formatDateTime(val.MsgTime)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              ) : (
+                <table className="w-full text-xs text-center">
+                  <thead className="sticky top-0 bg-muted border-b border-border z-10">
+                    <tr>
+                      <th className="px-2 py-2 font-semibold">EARFCN</th>
+                      <th className="px-2 py-2 font-semibold">RSRP</th>
+                      <th className="px-2 py-2 font-semibold">RSRQ</th>
+                      <th className="px-2 py-2 font-semibold">MsgTime</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/50">
+                    {radioValues.map((val, idx) => {
+                      const rsrpAbs = Math.abs(Number(val.RSRP));
+                      const rsrpColor = rsrpAbs >= 120 ? "text-destructive" : rsrpAbs >= 115 ? "text-warning" : "text-primary";
+                      const rsrqAbs = Math.abs(Number(val.RSRQ));
+                      const rsrqColor = rsrqAbs >= 18 ? "text-destructive" : rsrqAbs >= 16 ? "text-warning" : "text-primary";
+
+                      return (
+                        <tr key={idx} className="hover:bg-muted/30">
+                          <td className="px-2 py-2 font-mono">{val.EARFCN}</td>
+                          <td className={`px-2 py-2 font-mono font-bold ${rsrpColor}`}>{val.RSRP}</td>
+                          <td className={`px-2 py-2 font-mono font-bold ${rsrqColor}`}>{val.RSRQ}</td>
+                          <td className="px-2 py-2">{formatDateTime(val.MsgTime)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">Δεν βρέθηκαν δεδομένα για αυτήν την κλήση.</p>
+          )}
         </div>
       </div>
     </motion.div>
