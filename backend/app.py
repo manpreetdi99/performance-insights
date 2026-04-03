@@ -239,6 +239,42 @@ def get_lte_values(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/markers")
+def get_markers(
+    database: str = Query(..., min_length=1),
+    session_id: str = Query(..., min_length=1)
+):
+    try:
+        conn = get_connection(database)
+        cursor = conn.cursor()
+
+        query = """
+            SELECT [markerId]
+                  ,[SessionId]
+                  ,[MsgTime]
+                  ,[PosId]
+                  ,[NetworkId]
+                  ,[MarkerText]
+              FROM [Markers]
+              WHERE [SessionId] = ?
+              ORDER BY MsgTime
+        """
+
+        cursor.execute(query, (session_id,))
+
+        columns = [col[0] for col in cursor.description] if cursor.description else []
+        rows = cursor.fetchall() if cursor.description else []
+
+        data = []
+        for row in rows:
+            data.append({columns[idx]: row[idx] for idx in range(len(columns))})
+
+        conn.close()
+
+        return {"markers": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/gsm_values")
 def get_gsm_values(
     database: str = Query(..., min_length=1),
