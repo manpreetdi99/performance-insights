@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   ArrowLeft, Phone, Signal, Clock, Activity, Gauge, ArrowDown, ArrowUp,
@@ -7,6 +7,7 @@ import {
 import { Button } from "@/components/ui/button";
 import type { CallRecord } from "@/lib/callData";
 import { fetchLteValues, fetchGsmValues } from "@/lib/api";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from "recharts";
 
 /**
  * Interface για τα props του Component CallDetail.
@@ -59,6 +60,8 @@ function formatDateTime(iso: string): string {
 const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
   const [radioValues, setRadioValues] = useState<any[]>([]);
   const [isLoadingRadio, setIsLoadingRadio] = useState(false);
+  const [showStrength, setShowStrength] = useState(true);
+  const [showQuality, setShowQuality] = useState(true);
 
   useEffect(() => {
     async function loadRadio() {
@@ -92,18 +95,49 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
     { label: "Setup Time", value: `${call.setupTime_ms} ms`, icon: Timer, color: call.setupTime_ms > 500 ? "text-warning" : "text-success" },
   ];
 
+  const chartData = useMemo(() => {
+    return radioValues.map(val => {
+      const isCS = call.callMode === "CS";
+      return {
+        time: new Date(val.MsgTime).toLocaleTimeString("el-GR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+        RxLevSub: isCS ? Number(val.RxLevSub) : undefined,
+        RxQualSub: isCS ? Number(val.RxQualSub) : undefined,
+        RSRP: !isCS ? Number(val.RSRP) : undefined,
+        RSRQ: !isCS ? Number(val.RSRQ) : undefined,
+      };
+    });
+  }, [radioValues, call.callMode]);
+
   return (
     <motion.div
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
-      className="space-y-5"
+      className="space-y-4"
     >
-      {/* Top bar */}
-      <div className="flex items-center justify-between">
-        <Button variant="ghost" size="sm" onClick={onBack} className="gap-1.5">
+      {/* Top Controls (Back button, Metrics inline & Status) */}
+      <div className="flex flex-wrap md:flex-nowrap items-center justify-between gap-4 bg-card border border-border rounded-lg px-3 py-2">
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex items-center shrink-0 gap-1.5 h-7 px-2 text-xs font-medium rounded border border-border bg-muted/50 hover:bg-muted transition-colors"
+        >
           <ArrowLeft className="h-3.5 w-3.5" /> Πίσω στη λίστα
-        </Button>
-        <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+        </button>
+
+        {/* Inline Metrics Grid */}
+        <div className="flex items-center gap-4 md:gap-6 overflow-x-auto px-2 flex-1 justify-center scrollbar-hide">
+          {metrics.map((m) => (
+            <div key={m.label} className="flex flex-col items-center shrink-0">
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <m.icon className={`h-3 w-3 ${m.color}`} />
+                <span className="text-[10px] uppercase font-medium text-muted-foreground">{m.label}</span>
+              </div>
+              <span className="text-xs font-bold font-mono text-foreground">{m.value}</span>
+            </div>
+          ))}
+        </div>
+
+        <span className={`shrink-0 text-xs px-2 py-0.5 rounded font-medium ${
           call.status === "completed" ? "bg-success/10 text-success" :
           call.status === "dropped" ? "bg-warning/10 text-warning" :
           "bg-destructive/10 text-destructive"
@@ -112,12 +146,36 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
         </span>
       </div>
 
-      {/* Call Info Header */}
-      <div className="bg-card border border-border rounded-lg p-5">
-        <div className="flex items-start justify-between mb-4">
+      {/* Call Info Header & Chart */}
+      <div className="bg-card border border-border rounded-lg p-4">
+        <div className="flex items-start justify-between mb-3">
           <div>
-            <h2 className="text-lg font-bold font-mono text-foreground">{call.region} · {call.callId}</h2>
-            <p className="text-sm text-muted-foreground mt-0.5">
+            <div className="flex items-center gap-4">
+              <h2 className="text-lg font-bold font-mono text-foreground">{call.region} · {call.callId}</h2>
+              {radioValues && radioValues.length > 0 && (
+                <div className="flex items-center gap-3 bg-muted/50 px-2 py-1 rounded border border-border/50">
+                  <label className="flex items-center gap-1.5 text-xs font-medium text-foreground cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={showStrength}
+                      onChange={(e) => setShowStrength(e.target.checked)}
+                      className="h-3.5 w-3.5 rounded-sm border-primary text-primary focus:ring-primary"
+                    />
+                    {call.callMode === "CS" ? "RxLev" : "RSRP"}
+                  </label>
+                  <label className="flex items-center gap-1.5 text-xs font-medium text-foreground cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={showQuality}
+                      onChange={(e) => setShowQuality(e.target.checked)}
+                      className="h-3.5 w-3.5 rounded-sm border-primary text-primary focus:ring-primary"
+                    />
+                    {call.callMode === "CS" ? "RxQual" : "RSRQ"}
+                  </label>
+                </div>
+              )}
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">
               {call.callType} · {call.technology} · {call.operator} · {call.region}
             </p>
           </div>
@@ -130,41 +188,43 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
           </div>
         </div>
 
-        {/* MOS Score bar */}
-        <div className="flex items-center gap-3">
-          {/* <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-            <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: `${(call.avgMos / 5) * 100}%` }}
-              transition={{ duration: 0.8, ease: "easeOut" }}
-              className={`h-full rounded-full ${
-                call.avgMos >= 3.5 ? "bg-success" : call.avgMos >= 2.5 ? "bg-warning" : "bg-destructive"
-              }`}
-            />
-          </div> */}
-          {/* <span className={`text-sm font-bold font-mono ${
-            call.avgMos >= 3.5 ? "text-success" : call.avgMos >= 2.5 ? "text-warning" : "text-destructive"
-          }`}>
-            {call.avgMos > 0 ? call.avgMos.toFixed(2) : "N/A"}
-          </span> */}
-        </div>
-      </div>
-
-      {/* Metrics Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
-        {metrics.map((m, i) => (
-          <motion.div
-            key={m.label}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.05 }}
-            className="bg-card border border-border rounded-lg p-3 text-center"
-          >
-            <m.icon className={`h-4 w-4 mx-auto mb-1.5 ${m.color}`} />
-            <p className="text-xs text-muted-foreground">{m.label}</p>
-            <p className="text-sm font-bold font-mono text-foreground mt-0.5">{m.value}</p>
-          </motion.div>
-        ))}
+        {/* Chart inside the top card */}
+        {radioValues && radioValues.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-border">
+            <h3 className="text-xs font-semibold text-foreground mb-2 flex items-center gap-1.5">
+              <Activity className="h-3.5 w-3.5 text-primary" />
+              {call.callMode === "CS" ? "GSM Signal Chart (RxLev / RxQual)" : "LTE Signal Chart (RSRP / RSRQ)"}
+            </h3>
+            <div className="h-[140px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData} margin={{ top: 5, right: 0, left: 0, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.2} vertical={false} />
+                  <XAxis dataKey="time" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} axisLine={false} tickLine={false} />
+                  
+                  {call.callMode === "CS" ? (
+                    <>
+                      {showStrength && <YAxis yAxisId="left" domain={[-120, -30]} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} axisLine={false} tickLine={false} />}
+                      {showQuality && <YAxis yAxisId="right" orientation="right" domain={[0, 7]} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} axisLine={false} tickLine={false} />}
+                      <RechartsTooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }} itemStyle={{ color: 'hsl(var(--foreground))' }} />
+                      <Legend wrapperStyle={{ fontSize: '12px' }} />
+                      {showStrength && <Line yAxisId="left" type="monotone" dataKey="RxLevSub" stroke="hsl(200, 80%, 55%)" dot={false} strokeWidth={2} name="RxLevSub" />}
+                      {showQuality && <Line yAxisId="right" type="monotone" dataKey="RxQualSub" stroke="hsl(0, 72%, 55%)" dot={false} strokeWidth={2} name="RxQualSub" />}
+                    </>
+                  ) : (
+                    <>
+                      {showStrength && <YAxis yAxisId="left" domain={[-140, -40]} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} axisLine={false} tickLine={false} />}
+                      {showQuality && <YAxis yAxisId="right" orientation="right" domain={[-30, 0]} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} axisLine={false} tickLine={false} />}
+                      <RechartsTooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }} itemStyle={{ color: 'hsl(var(--foreground))' }} />
+                      <Legend wrapperStyle={{ fontSize: '12px' }} />
+                      {showStrength && <Line yAxisId="left" type="monotone" dataKey="RSRP" stroke="hsl(200, 80%, 55%)" dot={false} strokeWidth={2} name="RSRP" />}
+                      {showQuality && <Line yAxisId="right" type="monotone" dataKey="RSRQ" stroke="hsl(45, 93%, 58%)" dot={false} strokeWidth={2} name="RSRQ" />}
+                    </>
+                  )}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Panels Side by Side */}

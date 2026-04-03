@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, Fragment } from "react";
 import { motion } from "framer-motion";
-import { Activity, BarChart3, Phone, Database, MapPin } from "lucide-react";
+import { Activity, BarChart3, Phone, Database, MapPin, ArrowLeft } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import QueryEditor from "@/components/QueryEditor";
 import ResultsTable from "@/components/ResultsTable";
@@ -49,6 +49,23 @@ const normalizeStatus = (status: string | null | undefined): CallRecord["status"
   if (normalized.includes("drop")) return "dropped";
   if (normalized.includes("fail")) return "failed";
   return "completed";
+};
+
+type StatusFilterKey = "completed" | "dropped" | "failed" | "system release";
+
+const matchesStatusFilter = (status: string | null | undefined, filter: StatusFilterKey): boolean => {
+  const normalized = (status || "").toLowerCase();
+
+  if (filter === "completed") {
+    return normalized.includes("completed") || normalized === "";
+  }
+  if (filter === "dropped") {
+    return normalized.includes("drop");
+  }
+  if (filter === "failed") {
+    return normalized.includes("fail");
+  }
+  return normalized.includes("system release") || normalized.includes("system realase");
 };
 
 const getAllCallsRowClass = (row: AllCallsRow): string => {
@@ -155,6 +172,7 @@ const Index = () => {
   const [selectedCall, setSelectedCall] = useState<CallRecord | null>(null);
   const [activeTab, setActiveTab] = useLocalStorage<string>("perf-insights-active-tab", "queries");
   const [sessionValidFilter, setSessionValidFilter] = useState<"all" | "1" | "0">("all");
+  const [statusFilters, setStatusFilters] = useState<StatusFilterKey[]>([]);
   const [lastClickedRowId, setLastClickedRowId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -201,11 +219,20 @@ const Index = () => {
     setSelectedLocations([]);
   };
 
+  const toggleStatusFilter = (filter: StatusFilterKey) => {
+    setStatusFilters((prev) =>
+      prev.includes(filter)
+        ? prev.filter((item) => item !== filter)
+        : [...prev, filter],
+    );
+  };
+
   const clearCallsFilters = () => {
     setSelectedDatabase("");
     setSelectedCallsCollections([]);
     setSelectedLocations([]);
     setSessionValidFilter("all");
+    setStatusFilters([]);
   };
 
   const handleDatabaseChange = (newDb: string) => {
@@ -213,6 +240,7 @@ const Index = () => {
     setSelectedCallsCollections([]);
     setSelectedLocations([]);
     setSessionValidFilter("all");
+    setStatusFilters([]);
     setLocations([]);
     setAllCallsRows([]);
     setCallRecords([]);
@@ -364,17 +392,27 @@ const Index = () => {
   };
   const filteredAllCallsRows = useMemo(() => {
     return allCallsRows.filter((row) => {
-      if (sessionValidFilter === "1") return row.isValid === 1;
-      if (sessionValidFilter === "0") return row.isValid === 0;
+      // Filter by session valid
+      if (sessionValidFilter === "1" && row.isValid !== 1) return false;
+      if (sessionValidFilter === "0" && row.isValid !== 0) return false;
+
+      // Filter by status
+      if (statusFilters.length > 0) {
+        const hasMatchingStatus = statusFilters.some((filter) =>
+          matchesStatusFilter(row.status, filter),
+        );
+        if (!hasMatchingStatus) return false;
+      }
+
       return true;
     });
-  }, [allCallsRows, sessionValidFilter]);
+  }, [allCallsRows, sessionValidFilter, statusFilters]);
 
   const filteredCallRecords = useMemo(() => {
-    if (sessionValidFilter === "all") return callRecords;
+    if (sessionValidFilter === "all" && statusFilters.length === 0) return callRecords;
     const validIds = new Set(filteredAllCallsRows.map((r) => r.SessionId));
     return callRecords.filter((c) => validIds.has(c.callId));
-  }, [callRecords, filteredAllCallsRows, sessionValidFilter]);
+  }, [callRecords, filteredAllCallsRows, sessionValidFilter, statusFilters]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -429,20 +467,22 @@ const Index = () => {
 
       <main className="w-full px-4 sm:px-6 lg:px-10 mx-auto py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="bg-muted border border-border mb-6">
-            <TabsTrigger value="queries" className="gap-1.5 text-xs">
-              <Database className="h-3.5 w-3.5" /> Queries
-            </TabsTrigger>
-            <TabsTrigger value="calls" className="gap-1.5 text-xs">
-              <Phone className="h-3.5 w-3.5" /> All Calls
-            </TabsTrigger>
-            <TabsTrigger value="map" className="gap-1.5 text-xs">
-              <MapPin className="h-3.5 w-3.5" /> Map
-            </TabsTrigger>
-            <TabsTrigger value="detail" className="gap-1.5 text-xs" disabled={!selectedCall}>
-              <BarChart3 className="h-3.5 w-3.5" /> Call Detail
-            </TabsTrigger>
-          </TabsList>
+          <div className="flex items-center justify-between mb-2">
+            <TabsList className="bg-muted border border-border">
+              <TabsTrigger value="queries" className="gap-1.5 text-xs">
+                <Database className="h-3.5 w-3.5" /> Queries
+              </TabsTrigger>
+              <TabsTrigger value="calls" className="gap-1.5 text-xs">
+                <Phone className="h-3.5 w-3.5" /> All Calls
+              </TabsTrigger>
+              <TabsTrigger value="map" className="gap-1.5 text-xs">
+                <MapPin className="h-3.5 w-3.5" /> Map
+              </TabsTrigger>
+              <TabsTrigger value="detail" className="gap-1.5 text-xs" disabled={!selectedCall}>
+                <BarChart3 className="h-3.5 w-3.5" /> Call Detail
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="queries" className="space-y-6">
             <section className="bg-card border border-border rounded-lg p-4 space-y-4">
@@ -671,6 +711,49 @@ const Index = () => {
                         </button>
                       </div>
                     </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs font-medium">Status</label>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setStatusFilters([])}
+                          className={`text-[10px] px-2 py-1 rounded border ${statusFilters.length === 0 ? "bg-primary text-primary-foreground border-primary" : "border-border bg-muted hover:bg-muted/70"}`}
+                        >
+                          All
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleStatusFilter("completed")}
+                          className={`text-[10px] px-2 py-1 rounded border ${statusFilters.includes("completed") ? "bg-success/50 text-success-foreground border-success" : "border-border bg-muted hover:bg-muted/70"}`}
+                        >
+                          Completed
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleStatusFilter("dropped")}
+                          className={`text-[10px] px-2 py-1 rounded border ${statusFilters.includes("dropped") ? "bg-destructive/50 text-destructive-foreground border-destructive" : "border-border bg-muted hover:bg-muted/70"}`}
+                        >
+                          Drop
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleStatusFilter("failed")}
+                          className={`text-[10px] px-2 py-1 rounded border ${statusFilters.includes("failed") ? "bg-warning/50 text-warning-foreground border-warning" : "border-border bg-muted hover:bg-muted/70"}`}
+                        >
+                          Fail
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleStatusFilter("system release")}
+                          className={`text-[10px] px-2 py-1 rounded border ${statusFilters.includes("system release") ? "bg-violet-500/50 text-violet-100 border-violet-500" : "border-border bg-muted hover:bg-muted/70"}`}
+                        >
+                          System Release
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -685,6 +768,11 @@ const Index = () => {
                     {sessionValidFilter !== "all" && (
                       <Badge variant="secondary" className="text-[10px]">
                         Session: {sessionValidFilter === "1" ? "Valid" : "Invalid"}
+                      </Badge>
+                    )}
+                    {statusFilters.length > 0 && (
+                      <Badge variant="secondary" className="text-[10px]">
+                        Status: {statusFilters.join(", ")}
                       </Badge>
                     )}
                   </div>
