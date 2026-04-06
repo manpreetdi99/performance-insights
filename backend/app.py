@@ -14,10 +14,64 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from typing import Union
+
 class QueryRequest(BaseModel):
     database: str
     queries: list[str]
 
+class CommentRequest(BaseModel):
+    database: str
+    session_id: Union[str, int]
+    comment: str | None = ""
+
+@app.post("/api/calls/comment")
+def update_call_comment(req: CommentRequest):
+    try:
+        conn = get_connection(req.database)
+        cursor = conn.cursor()
+
+        # Check if comment already exists in AnalysisComment
+        cursor.execute("SELECT commentID FROM AnalysisComment WHERE Comment = ?", (req.comment,))
+        row = cursor.fetchone()
+        
+        if row:
+            comment_id = row[0]
+        else:
+            try:
+                # We must insert it. In SQL Server OUTPUT INSERTED is supported.
+                cursor.execute("INSERT INTO AnalysisComment (Comment) OUTPUT INSERTED.commentID VALUES (?)", (req.comment,))
+                comment_id = cursor.fetchone()[0]
+            except Exception as e:
+                # Fallback if OUTPUT INSERTED is not supported or identity fails
+                cursor.execute("INSERT INTO AnalysisComment (Comment) VALUES (?)", (req.comment,))
+                cursor.execute("SELECT @@IDENTITY")
+                comment_id = cursor.fetchone()[0]
+
+        # check if it exists in bridge
+        cursor.execute("SELECT sessionID FROM AnalysisCommentSessionsBridge WHERE sessionID = ?", (req.session_id,))
+        if cursor.fetchone():
+            cursor.execute("UPDATE AnalysisCommentSessionsBridge SET commentId = ? WHERE sessionID = ?", (comment_id, req.session_id))
+        else:
+            cursor.execute("INSERT INTO AnalysisCommentSessionsBridge (sessionID, commentId) VALUES (?, ?)", (req.session_id, comment_id))
+            
+        conn.commit()
+        conn.close()
+
+        return {"message": "Comment updated successfully"}
+    except Exception as e:
+        print(f"Error in update_call_comment bridge update: {e}")
+        # If the above fails because of missing table, fallback to updating Sessions.InvalidReason
+        try:
+            conn = get_connection(req.database)
+            cursor = conn.cursor()
+            cursor.execute("UPDATE Sessions SET InvalidReason = ? WHERE SessionId = ?", (req.comment, req.session_id))
+            conn.commit()
+            conn.close()
+            return {"message": "Comment updated successfully in Sessions"}
+        except Exception as fallback_e:
+            print(f"Fallback Error in update_call_comment: {fallback_e}")
+            raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/calls")
 def list_calls(

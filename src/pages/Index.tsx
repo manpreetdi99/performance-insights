@@ -111,6 +111,7 @@ const mapAllCallsRows = (rows: AllCallsRow[]): CallRecord[] => {
       latency: 0,
       jitter: 0,
       packetLoss: 0,
+      comment: row.comment,
       events: [
         {
           timestamp: new Date().toISOString(),

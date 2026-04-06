@@ -152,6 +152,20 @@ export async function fetchMosValues(
 }
 
 
+export async function updateCallComment(
+  database: string,
+  session_id: string,
+  comment: string
+): Promise<{ message: string }> {
+  return requestJson("/api/calls/comment", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ database, session_id, comment }),
+  });
+}
+
 export async function runBenchmarkApi(
   database: string,
   queries: string[]

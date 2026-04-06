@@ -2,11 +2,13 @@ import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   ArrowLeft, Phone, Signal, Clock, Activity, Gauge, ArrowDown, ArrowUp,
-  Wifi, AlertTriangle, CheckCircle2, XCircle, Timer,
+  Wifi, AlertTriangle, CheckCircle2, XCircle, Timer, Save, Edit2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/components/ui/use-toast";
 import type { CallRecord } from "@/lib/callData";
-import { fetchLteValues, fetchGsmValues, fetchMosValues } from "@/lib/api";
+import { fetchLteValues, fetchGsmValues, fetchMosValues, updateCallComment } from "@/lib/api";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend, ReferenceLine } from "recharts";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 //ReferenceLine για γραμμες στο διαγραμμα, πχ για thresholds. 
@@ -64,6 +66,32 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
   const [isLoadingRadio, setIsLoadingRadio] = useState(false);
   const [showStrength, setShowStrength] = useState(true);
   const [showQuality, setShowQuality] = useState(true);
+  const [commentText, setCommentText] = useState(call.comment || "");
+  const [isEditingComment, setIsEditingComment] = useState(false);
+  const [isSavingComment, setIsSavingComment] = useState(false);
+  const { toast } = useToast();
+
+  const handleSaveComment = async () => {
+    setIsSavingComment(true);
+    try {
+      await updateCallComment(database, call.callId, commentText);
+      call.comment = commentText; // Mutate local state inline to keep consistent
+      setIsEditingComment(false);
+      toast({
+        title: "Επιτυχία",
+        description: "Το σχόλιο αποθηκεύτηκε.",
+      });
+    } catch (err: any) {
+      console.error(err);
+      toast({
+        title: "Σφάλμα",
+        description: "Πρόβλημα κατά την αποθήκευση του σχολίου.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingComment(false);
+    }
+  };
 
   useEffect(() => {
     async function loadRadio() {
@@ -232,6 +260,40 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
               Διάρκεια: {Math.floor(call.duration_s / 60)}m {call.duration_s % 60}s
             </p>
           </div>
+        </div>
+
+        {/* Comment Section */}
+        <div className="mt-3 bg-muted/40 p-3 rounded-md border border-border">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-foreground uppercase tracking-wider">Σχολιο / Σημειωση</span>
+            {!isEditingComment && (
+              <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={() => setIsEditingComment(true)}>
+                <Edit2 className="w-3 h-3 mr-1.5" /> Επεξεργασία
+              </Button>
+            )}
+          </div>
+          {isEditingComment ? (
+            <div className="space-y-2">
+              <Textarea 
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                placeholder="Προσθέστε κάποιο σχόλιο για αυτήν την κλήση..."
+                className="text-sm min-h-[60px] resize-y"
+              />
+              <div className="flex justify-end gap-2">
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setIsEditingComment(false); setCommentText(call.comment || ""); }} disabled={isSavingComment}>
+                  Ακύρωση
+                </Button>
+                <Button size="sm" className="h-7 text-xs" onClick={handleSaveComment} disabled={isSavingComment}>
+                  {isSavingComment ? "Αποθήκευση..." : <><Save className="w-3 h-3 mr-1.5" /> Αποθήκευση</>}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground whitespace-pre-wrap min-h-[20px]">
+              {call.comment ? call.comment : "Δεν υπάρχει κανένα σχόλιο."}
+            </div>
+          )}
         </div>
 
         {/* Chart inside the top card */}
