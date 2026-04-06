@@ -6,9 +6,10 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { CallRecord } from "@/lib/callData";
-import { fetchLteValues, fetchGsmValues } from "@/lib/api";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from "recharts";
-
+import { fetchLteValues, fetchGsmValues, fetchMosValues } from "@/lib/api";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend, ReferenceLine } from "recharts";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+//ReferenceLine για γραμμες στο διαγραμμα, πχ για thresholds. 
 /**
  * Interface για τα props του Component CallDetail.
  * Η TypeScript μας εγγυάται ότι όποιος καλεί αυτό το Component, 
@@ -59,6 +60,7 @@ function formatDateTime(iso: string): string {
 
 const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
   const [radioValues, setRadioValues] = useState<any[]>([]);
+  const [mosValues, setMosValues] = useState<any[]>([]);
   const [isLoadingRadio, setIsLoadingRadio] = useState(false);
   const [showStrength, setShowStrength] = useState(true);
   const [showQuality, setShowQuality] = useState(true);
@@ -67,15 +69,21 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
     async function loadRadio() {
       setIsLoadingRadio(true);
       try {
-        if (call.callMode === "CS") {
-          const res = await fetchGsmValues(database, call.callId);
-          setRadioValues(res.gsmValues || []);
-        } else {
-          const res = await fetchLteValues(database, call.callId);
-          setRadioValues(res.lteValues || []);
+        const [radioRes, mosRes] = await Promise.allSettled([
+          call.callMode === "CS" ? fetchGsmValues(database, call.callId) : fetchLteValues(database, call.callId),
+          fetchMosValues(database, call.callId)
+        ]);
+
+        if (radioRes.status === "fulfilled") {
+          const res = radioRes.value as any;
+          setRadioValues(res.gsmValues || res.lteValues || []);
+        }
+
+        if (mosRes.status === "fulfilled") {
+          setMosValues(mosRes.value.mosValues || []);
         }
       } catch (err) {
-        console.error("Failed to load radio values", err);
+        console.error("Failed to load metrics", err);
       } finally {
         setIsLoadingRadio(false);
       }
@@ -98,12 +106,16 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
   const chartData = useMemo(() => {
     return radioValues.map(val => {
       const isCS = call.callMode === "CS";
+      
+      // Βοηθητική συνάρτηση για να μην μετατρέπεται το null/κενό σε 0 από την Number()
+      const parseValue = (v: any) => (v == null || v === "") ? undefined : Number(v);
+
       return {
         time: new Date(val.MsgTime).toLocaleTimeString("el-GR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-        RxLevSub: isCS ? Number(val.RxLevSub) : undefined,
-        RxQualSub: isCS ? Number(val.RxQualSub) : undefined,
-        RSRP: !isCS ? Number(val.RSRP) : undefined,
-        RSRQ: !isCS ? Number(val.RSRQ) : undefined,
+        RxLevSub: isCS ? parseValue(val.RxLevSub) : undefined,
+        RxQualSub: isCS ? parseValue(val.RxQualSub) : undefined,
+        RSRP: !isCS ? parseValue(val.RSRP) : undefined,
+        RSRQ: !isCS ? parseValue(val.RSRQ) : undefined,
       };
     });
   }, [radioValues, call.callMode]);
@@ -126,15 +138,49 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
 
         {/* Inline Metrics Grid */}
         <div className="flex items-center gap-4 md:gap-6 overflow-x-auto px-2 flex-1 justify-center scrollbar-hide">
-          {metrics.map((m) => (
-            <div key={m.label} className="flex flex-col items-center shrink-0">
-              <div className="flex items-center gap-1.5 mb-0.5">
-                <m.icon className={`h-3 w-3 ${m.color}`} />
-                <span className="text-[10px] uppercase font-medium text-muted-foreground">{m.label}</span>
-              </div>
-              <span className="text-xs font-bold font-mono text-foreground">{m.value}</span>
-            </div>
-          ))}
+          <TooltipProvider>
+            {metrics.map((m) => {
+              const isMos = m.label === "AVG Mos";
+              const content = (
+                <div key={m.label} className={`flex flex-col items-center shrink-0 ${isMos ? "cursor-help" : ""}`}>
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <m.icon className={`h-3 w-3 ${m.color}`} />
+                    <span className="text-[10px] uppercase font-medium text-muted-foreground">{m.label}</span>
+                  </div>
+                  <span className="text-xs font-bold font-mono text-foreground">{m.value}</span>
+                </div>
+              );
+
+              if (isMos) {
+                return (
+                  <Tooltip key={m.label} delayDuration={150}>
+                    <TooltipTrigger asChild>
+                      {content}
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" align="center" className="max-w-[200px] p-0 overflow-hidden border-border bg-card">
+                      <div className="bg-muted px-3 py-2 border-b border-border">
+                        <p className="text-xs font-semibold text-foreground">Individual MOS Values</p>
+                      </div>
+                      <div className="max-h-[160px] overflow-y-auto px-1 py-1">
+                        {!mosValues || mosValues.length === 0 ? (
+                          <p className="text-xs text-muted-foreground p-2 text-center">No additional values</p>
+                        ) : (
+                          <div className="grid grid-cols-2 gap-1 p-1">
+                            {mosValues.map((v, i) => (
+                              <div key={i} className="text-[11px] font-mono bg-muted/40 rounded px-2 py-1 text-center text-foreground">
+                                {v.OptionalWB !== null ? Number(v.OptionalWB).toFixed(2) : "-"}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              }
+              return content;
+            })}
+          </TooltipProvider>
         </div>
 
         <span className={`shrink-0 text-xs px-2 py-0.5 rounded font-medium ${
@@ -203,8 +249,12 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
                   
                   {call.callMode === "CS" ? (
                     <>
-                      {showStrength && <YAxis yAxisId="left" domain={[-120, -30]} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} axisLine={false} tickLine={false} />}
-                      {showQuality && <YAxis yAxisId="right" orientation="right" domain={[0, 7]} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} axisLine={false} tickLine={false} />}
+                      {showStrength && <YAxis yAxisId="left" domain={[-105, dataMax => Math.max(dataMax, -60)]} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} axisLine={false} tickLine={false} />}
+                      {showQuality && <YAxis yAxisId="right" orientation="right" reversed={true} domain={[0, 7]} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} axisLine={false} tickLine={false} />}
+                      {showStrength && !showQuality && <ReferenceLine y={-88} yAxisId="left" stroke="hsl(var(--warning, 45 93% 58%))" strokeDasharray="3 3" />}
+                      {showStrength && !showQuality && <ReferenceLine y={-92} yAxisId="left" stroke="hsl(var(--destructive, 0 72% 51%))" strokeDasharray="3 3" />}
+                      {showQuality && !showStrength && <ReferenceLine y={5} yAxisId="right" stroke="hsl(var(--warning, 45 93% 58%))" strokeDasharray="3 3" />}
+                      {showQuality && !showStrength && <ReferenceLine y={6} yAxisId="right" stroke="hsl(var(--destructive, 0 72% 51%))" strokeDasharray="3 3" />}
                       <RechartsTooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }} itemStyle={{ color: 'hsl(var(--foreground))' }} />
                       <Legend wrapperStyle={{ fontSize: '12px' }} />
                       {showStrength && <Line yAxisId="left" type="monotone" dataKey="RxLevSub" stroke="hsl(200, 80%, 55%)" dot={false} strokeWidth={2} name="RxLevSub" />}
@@ -212,8 +262,12 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
                     </>
                   ) : (
                     <>
-                      {showStrength && <YAxis yAxisId="left" domain={[-140, -40]} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} axisLine={false} tickLine={false} />}
-                      {showQuality && <YAxis yAxisId="right" orientation="right" domain={[-30, 0]} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} axisLine={false} tickLine={false} />}
+                      {showStrength && <YAxis yAxisId="left" domain={[-140, dataMax => Math.max(dataMax, -100)]} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} axisLine={false} tickLine={false} />}
+                      {showQuality && <YAxis yAxisId="right" orientation="right" domain={[-25, -12]} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} axisLine={false} tickLine={false} />}
+                      {showStrength && !showQuality && <ReferenceLine y={-115} yAxisId="left" stroke="hsl(var(--warning, 45 93% 58%))" strokeDasharray="3 3" />}
+                      {showStrength && !showQuality && <ReferenceLine y={-120} yAxisId="left" stroke="hsl(var(--destructive, 0 72% 51%))" strokeDasharray="3 3" />}
+                      {showQuality && !showStrength && <ReferenceLine y={-16} yAxisId="right" stroke="hsl(var(--warning, 45 93% 58%))" strokeDasharray="3 3" />}
+                      {showQuality && !showStrength && <ReferenceLine y={-18} yAxisId="right" stroke="hsl(var(--destructive, 0 72% 51%))" strokeDasharray="3 3" />}
                       <RechartsTooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }} itemStyle={{ color: 'hsl(var(--foreground))' }} />
                       <Legend wrapperStyle={{ fontSize: '12px' }} />
                       {showStrength && <Line yAxisId="left" type="monotone" dataKey="RSRP" stroke="hsl(200, 80%, 55%)" dot={false} strokeWidth={2} name="RSRP" />}

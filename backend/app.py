@@ -311,3 +311,36 @@ def get_gsm_values(
         return {"gsmValues": data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+    
+    
+@app.get("/api/mos_values")
+def get_mos_values(
+    database: str = Query(..., min_length=1),
+    session_id: str = Query(..., min_length=1)
+):
+    try:
+        conn = get_connection(database)
+        cursor = conn.cursor()
+
+        query = """
+            SELECT OptionalWB
+              FROM [ResultsLQ08Avg]
+              WHERE [SessionId] = ?
+              ORDER BY MsgId
+        """
+
+        cursor.execute(query, (session_id,))
+
+        columns = [col[0] for col in cursor.description] if cursor.description else []
+        rows = cursor.fetchall() if cursor.description else []
+
+        data = []
+        for row in rows:
+            data.append({columns[idx]: row[idx] for idx in range(len(columns))})
+
+        conn.close()
+
+        return {"mosValues": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
