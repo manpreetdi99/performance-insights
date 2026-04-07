@@ -550,14 +550,7 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
             )}
           </div>
 
-          {call.callMode !== "CS" && selectedLteSide === "B" && (
-            <div className="mb-3 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-              <div className="bg-muted/50 border border-border rounded px-2 py-1">Samples: <span className="font-mono">{bSideLteSummary?.samples ?? 0}</span></div>
-              <div className="bg-muted/50 border border-border rounded px-2 py-1">Avg RSRP: <span className="font-mono">{bSideLteSummary?.avgRsrp?.toFixed(2) ?? "N/A"}</span></div>
-              <div className="bg-muted/50 border border-border rounded px-2 py-1">Avg RSRQ: <span className="font-mono">{bSideLteSummary?.avgRsrq?.toFixed(2) ?? "N/A"}</span></div>
-              <div className="bg-muted/50 border border-border rounded px-2 py-1">RSRP min/max: <span className="font-mono">{bSideLteSummary?.minRsrp?.toFixed(1) ?? "N/A"} / {bSideLteSummary?.maxRsrp?.toFixed(1) ?? "N/A"}</span></div>
-            </div>
-          )}
+         
           
           {isLoadingRadio ? (
             <p className="text-xs text-muted-foreground">Φόρτωση δεδομένων...</p>
