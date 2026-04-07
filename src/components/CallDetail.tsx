@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 import type { CallRecord } from "@/lib/callData";
-import { fetchLteValues, fetchGsmValues, fetchMosValues, updateCallComment } from "@/lib/api";
+import { fetchLteValues, fetchLteValuesBSide, fetchGsmValues, fetchMosValues, updateCallComment, fetchKpiValues, fetchCallSideComparison, type CallSideComparisonRow } from "@/lib/api";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend, ReferenceLine } from "recharts";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 //ReferenceLine για γραμμες στο διαγραμμα, πχ για thresholds. 
@@ -63,6 +63,10 @@ function formatDateTime(iso: string): string {
 const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
   const [radioValues, setRadioValues] = useState<any[]>([]);
   const [mosValues, setMosValues] = useState<any[]>([]);
+  const [kpiValues, setKpiValues] = useState<any[]>([]);
+  const [sideComparison, setSideComparison] = useState<CallSideComparisonRow[]>([]);
+  const [bSideLteValues, setBSideLteValues] = useState<any[]>([]);
+  const [selectedLteSide, setSelectedLteSide] = useState<"A" | "B">("A");
   const [isLoadingRadio, setIsLoadingRadio] = useState(false);
   const [showStrength, setShowStrength] = useState(true);
   const [showQuality, setShowQuality] = useState(true);
@@ -97,9 +101,12 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
     async function loadRadio() {
       setIsLoadingRadio(true);
       try {
-        const [radioRes, mosRes] = await Promise.allSettled([
+        const [radioRes, mosRes, kpiRes, comparisonRes, bSideLteRes] = await Promise.allSettled([
           call.callMode === "CS" ? fetchGsmValues(database, call.callId) : fetchLteValues(database, call.callId),
-          fetchMosValues(database, call.callId)
+          fetchMosValues(database, call.callId),
+          fetchKpiValues(database, call.callId),
+          fetchCallSideComparison(database, call.callId),
+          call.callMode === "CS" ? Promise.resolve({ lteValuesBSide: [] }) : fetchLteValuesBSide(database, call.callId)
         ]);
 
         if (radioRes.status === "fulfilled") {
@@ -110,6 +117,22 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
         if (mosRes.status === "fulfilled") {
           setMosValues(mosRes.value.mosValues || []);
         }
+        
+        if (kpiRes.status === "fulfilled") {
+          setKpiValues(kpiRes.value.kpiValues || []);
+        }
+
+        if (comparisonRes.status === "fulfilled") {
+          setSideComparison(comparisonRes.value.comparison || []);
+        } else {
+          setSideComparison([]);
+        }
+
+        if (bSideLteRes.status === "fulfilled") {
+          setBSideLteValues(bSideLteRes.value.lteValuesBSide || []);
+        } else {
+          setBSideLteValues([]);
+        }
       } catch (err) {
         console.error("Failed to load metrics", err);
       } finally {
@@ -117,9 +140,15 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
       }
     }
     if (call.callId && database) {
+      setSelectedLteSide("A");
       loadRadio();
     }
   }, [database, call.callId, call.callMode]);
+
+  const activeRadioValues = useMemo(() => {
+    if (call.callMode === "CS") return radioValues;
+    return selectedLteSide === "B" ? bSideLteValues : radioValues;
+  }, [call.callMode, selectedLteSide, radioValues, bSideLteValues]);
 
   const metrics = [
     { label: "Download", value: `${call.downloadSpeed.toFixed(1)} Mbps`, icon: ArrowDown, color: "text-primary" },
@@ -132,7 +161,7 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
   ];
 
   const chartData = useMemo(() => {
-    return radioValues.map(val => {
+    return activeRadioValues.map(val => {
       const isCS = call.callMode === "CS";
       
       // Βοηθητική συνάρτηση για να μην μετατρέπεται το null/κενό σε 0 από την Number()
@@ -146,7 +175,32 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
         RSRQ: !isCS ? parseValue(val.RSRQ) : undefined,
       };
     });
-  }, [radioValues, call.callMode]);
+  }, [activeRadioValues, call.callMode]);
+
+  const bSideLteSummary = useMemo(() => {
+    if (!bSideLteValues || bSideLteValues.length === 0) {
+      return null;
+    }
+
+    const rsrpVals = bSideLteValues
+      .map((v) => Number(v.RSRP))
+      .filter((v) => Number.isFinite(v));
+    const rsrqVals = bSideLteValues
+      .map((v) => Number(v.RSRQ))
+      .filter((v) => Number.isFinite(v));
+
+    const avg = (arr: number[]) => arr.reduce((acc, n) => acc + n, 0) / arr.length;
+
+    return {
+      samples: bSideLteValues.length,
+      avgRsrp: rsrpVals.length ? avg(rsrpVals) : null,
+      avgRsrq: rsrqVals.length ? avg(rsrqVals) : null,
+      minRsrp: rsrpVals.length ? Math.min(...rsrpVals) : null,
+      maxRsrp: rsrpVals.length ? Math.max(...rsrpVals) : null,
+      minRsrq: rsrqVals.length ? Math.min(...rsrqVals) : null,
+      maxRsrq: rsrqVals.length ? Math.max(...rsrqVals) : null,
+    };
+  }, [bSideLteValues]);
 
   return (
     <motion.div
@@ -296,8 +350,42 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
           )}
         </div>
 
+        <div className="mt-3 bg-muted/40 p-3 rounded-md border border-border">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-foreground uppercase tracking-wider">A-side vs B-side</span>
+          </div>
+          {sideComparison.length === 0 ? (
+            <div className="text-sm text-muted-foreground">Δεν βρέθηκαν δεδομένα σύγκρισης για αυτό το session.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-muted-foreground border-b border-border">
+                    <th className="py-1 pr-2">Side</th>
+                    <th className="py-1 pr-2">Status</th>
+                    <th className="py-1 pr-2">Code</th>
+                    <th className="py-1 pr-2">Description</th>
+                    <th className="py-1 text-right">Calls</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sideComparison.map((row, idx) => (
+                    <tr key={`${row.Side || "N"}-${row.code || "NA"}-${idx}`} className="border-b border-border/40">
+                      <td className="py-1 pr-2 text-foreground">{row.Side || "N/A"}</td>
+                      <td className="py-1 pr-2 text-foreground">{row.callStatus || "N/A"}</td>
+                      <td className="py-1 pr-2 font-mono text-foreground">{row.code || "N/A"}</td>
+                      <td className="py-1 pr-2 text-foreground">{row.codeDescription || "N/A"}</td>
+                      <td className="py-1 text-right font-mono text-foreground">{row.calls ?? 0}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
         {/* Chart inside the top card */}
-        {radioValues && radioValues.length > 0 && (
+        {activeRadioValues && activeRadioValues.length > 0 && (
           <div className="mt-3 pt-3 border-t border-border">
             <h3 className="text-xs font-semibold text-foreground mb-2 flex items-center gap-1.5">
               <Activity className="h-3.5 w-3.5 text-primary" />
@@ -344,7 +432,7 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
       </div>
 
       {/* Panels Side by Side */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 xl:grid-cols-3 lg:grid-cols-2 gap-5">
         {/* Event Timeline (Αριστερά) */}
         <div className="bg-card border border-border rounded-lg p-5">
           <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
@@ -389,16 +477,91 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
           </div>
         </div>
 
-        {/* Radio Measurements Panel (Δεξιά) */}
+        {/* KPI panel (Μέση) */}
         <div className="bg-card border border-border rounded-lg p-5">
           <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
-            <Signal className="h-4 w-4 text-primary" />
-            {call.callMode === "CS" ? "GSM Measurements" : "LTE Measurements"}
+            <Activity className="h-4 w-4 text-primary" />
+            KPI Results
           </h3>
+
+          {isLoadingRadio ? (
+            <p className="text-xs text-muted-foreground">Φόρτωση δεδομένων...</p>
+          ) : kpiValues && kpiValues.length > 0 ? (
+            <div className="overflow-x-auto max-h-[300px] overflow-y-auto flex">
+              <table className="w-full text-xs text-center">
+                <thead className="sticky top-0 bg-muted border-b border-border z-10">
+                  <tr>
+                    <th className="px-2 py-1 font-semibold">KPIId</th>
+                    <th className="px-2 py-1 font-semibold">ErrorCode</th>
+                    {/* <th className="px-2 py-1 font-semibold">Value1</th>
+                    <th className="px-2 py-1 font-semibold">Value2</th> */}
+                    <th className="px-2 py-1 font-semibold">Value3</th>
+                    <th className="px-2 py-1 font-semibold">Value4</th>
+                    <th className="px-2 py-1 font-semibold">Value5</th>
+                    <th className="px-2 py-1 font-semibold">MsgTime</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/50">
+                  {kpiValues.map((val, idx) => (
+                    <tr key={idx} className="hover:bg-muted/30">
+                      <td className="px-2 py-1 font-mono">{val.KPIId}</td>
+                      <td className="px-2 py-1 font-mono">{val.ErrorCode}</td>
+                      {/* <td className="px-2 py-1 font-mono">{val.Value1}</td>
+                      <td className="px-2 py-1 font-mono">{val.Value2}</td> */}
+                      <td className="px-2 py-1 font-mono max-w-[100px] break-all whitespace-normal overflow-hidden">{val.Value3}</td>
+                      <td className="px-2 py-1 font-mono max-w-[100px] break-all whitespace-normal overflow-hidden">{val.Value4}</td>
+                      <td className="px-2 py-1 font-mono max-w-[100px] break-all whitespace-normal overflow-hidden">{val.Value5}</td>
+
+                      <td className="px-2 py-2">{formatDateTime(val.StartTime)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">Δεν υπάρχουν KPI δεδομένα.</p>
+          )}
+        </div>
+
+        {/* Radio Measurements Panel (Δεξιά) */}
+        <div className="bg-card border border-border rounded-lg p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+              <Signal className="h-4 w-4 text-primary" />
+              {call.callMode === "CS" ? "GSM Measurements" : "LTE Measurements"}
+            </h3>
+            {call.callMode !== "CS" && (
+              <div className="inline-flex rounded-md border border-border overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setSelectedLteSide("A")}
+                  className={`px-2 py-1 text-xs ${selectedLteSide === "A" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground hover:bg-muted/80"}`}
+                >
+                  A-side
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedLteSide("B")}
+                  className={`px-2 py-1 text-xs border-l border-border ${selectedLteSide === "B" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground hover:bg-muted/80"}`}
+                >
+                  B-side
+                </button>
+              </div>
+            )}
+          </div>
+
+          {call.callMode !== "CS" && selectedLteSide === "B" && (
+            <div className="mb-3 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+              <div className="bg-muted/50 border border-border rounded px-2 py-1">Samples: <span className="font-mono">{bSideLteSummary?.samples ?? 0}</span></div>
+              <div className="bg-muted/50 border border-border rounded px-2 py-1">Avg RSRP: <span className="font-mono">{bSideLteSummary?.avgRsrp?.toFixed(2) ?? "N/A"}</span></div>
+              <div className="bg-muted/50 border border-border rounded px-2 py-1">Avg RSRQ: <span className="font-mono">{bSideLteSummary?.avgRsrq?.toFixed(2) ?? "N/A"}</span></div>
+              <div className="bg-muted/50 border border-border rounded px-2 py-1">RSRP min/max: <span className="font-mono">{bSideLteSummary?.minRsrp?.toFixed(1) ?? "N/A"} / {bSideLteSummary?.maxRsrp?.toFixed(1) ?? "N/A"}</span></div>
+            </div>
+          )}
           
           {isLoadingRadio ? (
             <p className="text-xs text-muted-foreground">Φόρτωση δεδομένων...</p>
-          ) : radioValues && radioValues.length > 0 ? (
+          ) : activeRadioValues && activeRadioValues.length > 0 ? (
             <div className="overflow-x-auto max-h-[300px] overflow-y-auto flex">
               {call.callMode === "CS" ? (
                 <table className="w-full text-xs text-center">
@@ -411,7 +574,7 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/50">
-                    {radioValues.map((val, idx) => {
+                    {activeRadioValues.map((val, idx) => {
                       const rxAbs = Math.abs(Number(val.RxLevSub));
                       const rxColor = rxAbs >= 95 ? "text-destructive" : rxAbs >= 90 ? "text-warning" : "text-primary";
                       const rxqAbs = Math.abs(Number(val.RxQualSub));
@@ -439,7 +602,7 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/50">
-                    {radioValues.map((val, idx) => {
+                    {activeRadioValues.map((val, idx) => {
                       const rsrpAbs = Math.abs(Number(val.RSRP));
                       const rsrpColor = rsrpAbs >= 120 ? "text-destructive" : rsrpAbs >= 115 ? "text-warning" : "text-primary";
                       const rsrqAbs = Math.abs(Number(val.RSRQ));

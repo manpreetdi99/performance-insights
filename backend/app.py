@@ -293,6 +293,69 @@ def get_lte_values(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@app.get("/api/lte_values_b_side")
+def get_lte_values_b_side(
+    database: str = Query(..., min_length=1),
+    session_id: str = Query(..., min_length=1)
+):
+    try:
+        conn = get_connection(database)
+        cursor = conn.cursor()
+
+        query = """
+            ;WITH pair_root AS (
+                SELECT TOP (1)
+                    CASE
+                        WHEN CA.Side = 'B' AND CA.SessionIdA IS NOT NULL THEN CA.SessionIdA
+                        ELSE CA.SessionId
+                    END AS ASessionId
+                FROM CallAnalysis CA
+                WHERE CA.SessionId = TRY_CONVERT(BIGINT, ?)
+                   OR CA.SessionIdA = TRY_CONVERT(BIGINT, ?)
+            ),
+            b_side AS (
+                SELECT TOP (1)
+                    CA.SessionId AS BSessionId
+                FROM CallAnalysis CA
+                INNER JOIN pair_root PR
+                    ON CA.SessionIdA = PR.ASessionId
+                WHERE CA.Side = 'B'
+            )
+            SELECT
+                L.SessionId,
+                L.MsgTime,
+                L.PosId,
+                L.EARFCN,
+                ROUND(L.RSRP, 2) AS RSRP,
+                ROUND(L.RSRQ, 2) AS RSRQ,
+                ROUND(L.SINR0, 2) AS SINR0,
+                ROUND(L.SINR1, 2) AS SINR1,
+                P.Latitude,
+                P.Longitude
+            FROM LTEMeasurementReport L
+            INNER JOIN b_side B
+                ON L.SessionId = B.BSessionId
+            LEFT JOIN Position P
+                ON P.PosId = L.PosId
+            ORDER BY L.MsgTime
+        """
+
+        cursor.execute(query, (session_id, session_id))
+
+        columns = [col[0] for col in cursor.description] if cursor.description else []
+        rows = cursor.fetchall() if cursor.description else []
+
+        data = []
+        for row in rows:
+            data.append({columns[idx]: row[idx] for idx in range(len(columns))})
+
+        conn.close()
+
+        return {"lteValuesBSide": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/markers")
 def get_markers(
     database: str = Query(..., min_length=1),
@@ -396,5 +459,108 @@ def get_mos_values(
         conn.close()
 
         return {"mosValues": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/results_kpi")
+def get_results_kpi(
+    database: str = Query(..., min_length=1),
+    session_id: str | None = Query(default=None)
+):
+    try:
+        conn = get_connection(database)
+        cursor = conn.cursor()
+
+        query = """
+            SELECT TOP (1000) [MsgId]
+                  ,[SessionId]
+                  ,[TestId]
+                  ,[KPIId]
+                  ,[StartTime]
+                  ,[EndTime]
+                  ,[ErrorCode]
+                  ,[Counter]
+                  ,[Value1]
+                  ,[Value2]
+                  ,[Value3]
+                  ,[Value4]
+                  ,[Value5]
+              FROM [ResultsKPI]
+        """
+        
+        params = []
+        if session_id:
+            query += " WHERE [SessionId] = ?"
+            params.append(session_id)
+            
+        cursor.execute(query, tuple(params))
+
+        columns = [col[0] for col in cursor.description] if cursor.description else []
+        rows = cursor.fetchall() if cursor.description else []
+
+        data = []
+        for row in rows:
+            data.append({columns[idx]: row[idx] for idx in range(len(columns))})
+
+        conn.close()
+
+        return {"kpiValues": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/call_side_comparison")
+def get_call_side_comparison(
+    database: str = Query(..., min_length=1),
+    session_id: str = Query(..., min_length=1)
+):
+    try:
+        conn = get_connection(database)
+        cursor = conn.cursor()
+
+        query = """
+            WITH root_session AS (
+                SELECT TOP (1)
+                    CASE
+                        WHEN CA.Side = 'B' AND CA.SessionIdA IS NOT NULL THEN CA.SessionIdA
+                        ELSE CA.SessionId
+                    END AS ASessionId
+                FROM CallAnalysis CA
+                WHERE CA.SessionId = TRY_CONVERT(BIGINT, ?)
+                   OR CA.SessionIdA = TRY_CONVERT(BIGINT, ?)
+            )
+            SELECT
+                CA.Side,
+                CA.callStatus,
+                CA.code,
+                CA.codeDescription,
+                COUNT(*) AS calls
+            FROM CallAnalysis CA
+            CROSS JOIN root_session RS
+            WHERE
+                (CA.Side = 'A' AND CA.SessionId = RS.ASessionId)
+                OR
+                (CA.Side = 'B' AND CA.SessionIdA = RS.ASessionId)
+            GROUP BY
+                CA.Side,
+                CA.callStatus,
+                CA.code,
+                CA.codeDescription
+            ORDER BY
+                calls DESC
+        """
+
+        cursor.execute(query, (session_id, session_id))
+
+        columns = [col[0] for col in cursor.description] if cursor.description else []
+        rows = cursor.fetchall() if cursor.description else []
+
+        data = []
+        for row in rows:
+            data.append({columns[idx]: row[idx] for idx in range(len(columns))})
+
+        conn.close()
+
+        return {"comparison": data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
