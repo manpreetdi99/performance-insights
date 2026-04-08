@@ -1,14 +1,14 @@
 import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
-  ArrowLeft, Phone, Signal, Clock, Activity, Gauge, ArrowDown, ArrowUp,
-  Wifi, AlertTriangle, CheckCircle2, XCircle, Timer, Save, Edit2
+  ArrowLeft, Signal, Activity, Gauge, ArrowDown, ArrowUp,
+  Wifi, Timer, Save, Edit2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 import type { CallRecord } from "@/lib/callData";
-import { fetchLteValues, fetchLteValuesBSide, fetchGsmValues, fetchMosValues, updateCallComment, fetchKpiValues, fetchCallSideComparison, type CallSideComparisonRow } from "@/lib/api";
+import { fetchLteValues, fetchLteValuesBSide, fetchGsmValues, fetchMosValues, updateCallComment, fetchKpiValues, fetchCallSideComparison, fetchTracelogValues, type CallSideComparisonRow, type TraceLogRow } from "@/lib/api";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend, ReferenceLine } from "recharts";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 //ReferenceLine για γραμμες στο διαγραμμα, πχ για thresholds. 
@@ -23,26 +23,6 @@ interface CallDetailProps {
   database: string;
   onBack: () => void;
 }
-
-// Λεξικά στυλιζαρίσματος. Εδώ δεν γράψαμε Type γιατί η TypeScript καταλαβαίνει
-// αυτόματα τη δομή τους (Inferred Typing).
-const statusColors = {
-  success: "border-success/30 bg-success/5",
-  warning: "border-warning/30 bg-warning/5",
-  error: "border-destructive/30 bg-destructive/5",
-};
-
-const statusIcons = {
-  success: CheckCircle2,
-  warning: AlertTriangle,
-  error: XCircle,
-};
-
-const statusTextColors = {
-  success: "text-success",
-  warning: "text-warning",
-  error: "text-destructive",
-};
 
 /**
  * Παράδειγμα συνάρτησης με Types.
@@ -64,6 +44,7 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
   const [radioValues, setRadioValues] = useState<any[]>([]);
   const [mosValues, setMosValues] = useState<any[]>([]);
   const [kpiValues, setKpiValues] = useState<any[]>([]);
+  const [tracelogValues, setTracelogValues] = useState<TraceLogRow[]>([]);
   const [sideComparison, setSideComparison] = useState<CallSideComparisonRow[]>([]);
   const [bSideLteValues, setBSideLteValues] = useState<any[]>([]);
   const [selectedLteSide, setSelectedLteSide] = useState<"A" | "B">("A");
@@ -101,12 +82,13 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
     async function loadRadio() {
       setIsLoadingRadio(true);
       try {
-        const [radioRes, mosRes, kpiRes, comparisonRes, bSideLteRes] = await Promise.allSettled([
+        const [radioRes, mosRes, kpiRes, comparisonRes, bSideLteRes, tracelogRes] = await Promise.allSettled([
           call.callMode === "CS" ? fetchGsmValues(database, call.callId) : fetchLteValues(database, call.callId),
           fetchMosValues(database, call.callId),
           fetchKpiValues(database, call.callId),
           fetchCallSideComparison(database, call.callId),
-          call.callMode === "CS" ? Promise.resolve({ lteValuesBSide: [] }) : fetchLteValuesBSide(database, call.callId)
+          call.callMode === "CS" ? Promise.resolve({ lteValuesBSide: [] }) : fetchLteValuesBSide(database, call.callId),
+          fetchTracelogValues(database, call.callId)
         ]);
 
         if (radioRes.status === "fulfilled") {
@@ -132,6 +114,12 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
           setBSideLteValues(bSideLteRes.value.lteValuesBSide || []);
         } else {
           setBSideLteValues([]);
+        }
+
+        if (tracelogRes.status === "fulfilled") {
+          setTracelogValues(tracelogRes.value.tracelogValues || []);
+        } else {
+          setTracelogValues([]);
         }
       } catch (err) {
         console.error("Failed to load metrics", err);
@@ -278,6 +266,41 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
       <div className="bg-card border border-border rounded-lg p-4">
         <div className="flex items-start justify-between mb-3">
           <div>
+
+          {/* <div className="bg-card border border-border rounded-lg p-5">
+            <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
+              <Activity className="h-4 w-4 text-primary" />
+              TraceLog
+            </h3>
+
+            {isLoadingRadio ? (
+              <p className="text-xs text-muted-foreground">Φόρτωση δεδομένων...</p>
+            ) : tracelogValues && tracelogValues.length > 0 ? (
+              <div className="overflow-x-auto max-h-[300px] overflow-y-auto flex">
+                <table className="w-full text-xs text-left">
+                  <thead className="sticky top-0 bg-muted border-b border-border z-10">
+                    <tr>
+                      <th className="px-2 py-1 font-semibold">FactId</th>
+                      <th className="px-2 py-1 font-semibold">FullDate</th>
+                      <th className="px-2 py-1 font-semibold">Info</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/50">
+                    {tracelogValues.map((val, idx) => (
+                      <tr key={`${val.FactId ?? idx}-${idx}`} className="hover:bg-muted/30">
+                        <td className="px-2 py-1 font-mono">{val.FactId ?? "N/A"}</td>
+                        <td className="px-2 py-1">{val.FullDate ? formatDateTime(val.FullDate) : "N/A"}</td>
+                        <td className="px-2 py-1 font-mono whitespace-pre-wrap break-words max-w-[520px]">{val.Info ?? "N/A"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Δεν υπάρχουν TraceLog δεδομένα.</p>
+            )}
+          </div> */}
+
             <div className="flex items-center gap-4">
               <h2 className="text-lg font-bold font-mono text-foreground">{call.region} · {call.callId}</h2>
               {radioValues && radioValues.length > 0 && (
@@ -433,48 +456,41 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
 
       {/* Panels Side by Side */}
       <div className="grid grid-cols-1 xl:grid-cols-3 lg:grid-cols-2 gap-5">
-        {/* Event Timeline (Αριστερά) */}
+        {/* TraceLog panel (Αριστερά) */}
         <div className="bg-card border border-border rounded-lg p-5">
           <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
-            <Clock className="h-4 w-4 text-primary" />
-            Event Timeline
+            <Activity className="h-4 w-4 text-primary" />
+            TraceLog
           </h3>
 
-          <div className="relative">
-            {/* Vertical line */}
-            <div className="absolute left-[18px] top-2 bottom-2 w-px bg-border" />
-
-            <div className="space-y-3">
-              {call.events.map((event, i) => {
-                const EventIcon = statusIcons[event.status];
-                return (
-                  <motion.div
-                    key={i}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.08 }}
-                    className={`relative flex items-start gap-3 pl-2 py-2 px-3 rounded-md border ${statusColors[event.status]}`}
-                  >
-                    <div className="relative z-10 mt-0.5">
-                      <EventIcon className={`h-4 w-4 ${statusTextColors[event.status]}`} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-foreground">{event.event}</span>
-                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                          {event.duration_ms > 0 && (
-                            <span className="font-mono">{event.duration_ms}ms</span>
-                          )}
-                          <span>{new Date(event.timestamp).toLocaleTimeString("el-GR")}</span>
-                        </div>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">{event.details}</p>
-                    </div>
-                  </motion.div>
-                );
-              })}
+          {isLoadingRadio ? (
+            <p className="text-xs text-muted-foreground">Φόρτωση δεδομένων...</p>
+          ) : tracelogValues && tracelogValues.length > 0 ? (
+            <div className="overflow-x-auto max-h-[300px] overflow-y-auto flex">
+              <table className="w-full text-xs text-left">
+                <thead className="sticky top-0 bg-muted border-b border-border z-10">
+                  <tr>
+                    <th className="px-2 py-1 font-semibold">FullDate</th>
+                    <th className="px-2 py-1 font-semibold">Side</th>
+                    <th className="px-2 py-1 font-semibold">SessionId</th>
+                    <th className="px-2 py-1 font-semibold">Info</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/50">
+                  {tracelogValues.map((val, idx) => (
+                    <tr key={`${val.FullDate ?? idx}-${idx}`} className="hover:bg-muted/30">
+                      <td className="px-2 py-1">{val.FullDate ? formatDateTime(val.FullDate) : "N/A"}</td>
+                      <td className="px-2 py-1 font-mono">{val.Side ?? "N/A"}</td>
+                      <td className="px-2 py-1 font-mono">{val.SessionId ?? "N/A"}</td>
+                      <td className="px-2 py-1 font-mono whitespace-pre-wrap break-words max-w-[520px]">{val.Info ?? "N/A"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">Δεν υπάρχουν TraceLog δεδομένα.</p>
+          )}
         </div>
 
         {/* KPI panel (Μέση) */}
