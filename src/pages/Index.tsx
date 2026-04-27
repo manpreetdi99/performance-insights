@@ -111,6 +111,8 @@ const mapAllCallsRows = (rows: AllCallsRow[]): CallRecord[] => {
       latency: 0,
       jitter: 0,
       packetLoss: 0,
+      latitude: row.latitude,
+      longitude: row.longitude,
       comment: row.comment,
       events: [
         {
@@ -829,8 +831,8 @@ const Index = () => {
                         
                         if (idx > 0) {
                           const prevFileTime = getFileDateTime(filteredAllCallsRows[idx - 1].ASideFileName);
-                          // Show "End of File" if the date/time part of the filename changed
-                          if (prevFileTime !== null && currentFileTime !== null && prevFileTime !== currentFileTime) {
+                          // Show "End of File" if the date/time part of the filename changed and no status filters or invalid session filters are applied
+                          if (statusFilters.length === 0 && sessionValidFilter !== "0" && prevFileTime !== null && currentFileTime !== null && prevFileTime !== currentFileTime) {
                             showEndOfFile = true;
                           }
                         }

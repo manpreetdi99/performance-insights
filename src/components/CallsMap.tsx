@@ -46,6 +46,48 @@ const CallsMap = ({ calls, onSelectCall }: CallsMapProps) => {
     return stats;
   }, [calls]);
 
+  const mapPoints = useMemo(() => {
+    const points: Record<string, { lat: number; lng: number; total: number; completed: number; dropped: number; failed: number; calls: CallRecord[] }> = {};
+    
+    calls.forEach((c) => {
+      let lat = c.latitude;
+      let lng = c.longitude;
+      
+      // Fallback to CITY_COORDS if no exact coords but region matches
+      if (lat == null || lng == null) {
+        if (c.region && CITY_COORDS[c.region]) {
+          lat = CITY_COORDS[c.region][0];
+          lng = CITY_COORDS[c.region][1];
+        } else {
+          // If still no coords, we try to see if any known city matches partially
+          const matchedCity = Object.keys(CITY_COORDS).find(city => 
+            c.region && c.region.toLowerCase().includes(city.toLowerCase())
+          );
+          if (matchedCity) {
+            lat = CITY_COORDS[matchedCity][0];
+            lng = CITY_COORDS[matchedCity][1];
+          } else {
+            return; // Skip if no coords at all
+          }
+        }
+      }
+
+      // Group by coordinate (rounded slightly to group nearby points within ~10 meters)
+      const rLat = Math.round(lat * 10000) / 10000;
+      const rLng = Math.round(lng * 10000) / 10000;
+      const key = `${rLat},${rLng}`;
+
+      if (!points[key]) {
+        points[key] = { lat: rLat, lng: rLng, total: 0, completed: 0, dropped: 0, failed: 0, calls: [] };
+      }
+      points[key].total++;
+      points[key][c.status]++;
+      points[key].calls.push(c);
+    });
+    
+    return Object.values(points);
+  }, [calls]);
+
   return (
     <div className="bg-card border border-border rounded-lg p-5">
       <h2 className="text-sm font-semibold text-foreground mb-1 flex items-center gap-2">
@@ -69,18 +111,15 @@ const CallsMap = ({ calls, onSelectCall }: CallsMapProps) => {
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
-            {Object.entries(CITY_COORDS).map(([city, coords]) => {
-              const stat = regionStats[city];
-              if (!stat) return null;
-              
-              const radius = Math.max(10, Math.min(25, stat.total * 2));
-              const failRate = (stat.dropped + stat.failed) / stat.total;
+            {mapPoints.map((point, idx) => {
+              const radius = Math.max(6, Math.min(20, 4 + point.total));
+              const failRate = (point.dropped + point.failed) / point.total;
               const hasHighFailRate = failRate > 0.3;
 
               return (
                 <CircleMarker
-                  key={city}
-                  center={coords}
+                  key={idx}
+                  center={[point.lat, point.lng]}
                   radius={radius}
                   pathOptions={{
                     fillColor: hasHighFailRate ? "#f59e0b" : "#3b82f6",
@@ -89,13 +128,19 @@ const CallsMap = ({ calls, onSelectCall }: CallsMapProps) => {
                     weight: 2,
                   }}
                   eventHandlers={{
-                    click: () => stat.calls[0] && onSelectCall(stat.calls[0]),
+                    click: () => point.calls[0] && onSelectCall(point.calls[0]),
                   }}
                 >
                   <Tooltip direction="top" offset={[0, -10]} opacity={0.9}>
                     <div className="text-center font-sans space-y-1">
-                      <div className="font-bold text-sm">{city}</div>
-                      <div className="text-xs text-muted-foreground">{stat.total} calls</div>
+                      <div className="font-bold text-sm">
+                        {point.calls.length === 1 ? `Call ${point.calls[0].callId}` : `${point.total} calls`}
+                      </div>
+                      <div className="text-xs text-muted-foreground space-x-2">
+                        <span className="text-success">{point.completed} ok</span>
+                        <span className="text-warning">{point.dropped} drop</span>
+                        <span className="text-destructive">{point.failed} fail</span>
+                      </div>
                     </div>
                   </Tooltip>
                 </CircleMarker>
