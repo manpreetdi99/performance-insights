@@ -1,8 +1,8 @@
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
 import { MapPin, Phone, PhoneOff, PhoneForwarded } from "lucide-react";
 import type { CallRecord } from "@/lib/callData";
-import { MapContainer, TileLayer, CircleMarker, Tooltip } from "react-leaflet";
+import { MapContainer, TileLayer, CircleMarker, Tooltip, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 
 interface CallsMapProps {
@@ -33,6 +33,30 @@ const statusIcons = {
   dropped: PhoneOff,
   failed: PhoneForwarded,
 };
+
+function MapBounds({ points }: { points: any[] }) {
+  const map = useMap();
+  
+  useEffect(() => {
+    if (points.length === 0) return;
+    
+    const minLat = Math.min(...points.map(p => p.lat));
+    const maxLat = Math.max(...points.map(p => p.lat));
+    const minLng = Math.min(...points.map(p => p.lng));
+    const maxLng = Math.max(...points.map(p => p.lng));
+    
+    if (minLat === maxLat && minLng === maxLng) {
+      map.setView([minLat, minLng], 12);
+    } else {
+      map.fitBounds([
+        [minLat, minLng],
+        [maxLat, maxLng]
+      ], { padding: [20, 20], maxZoom: 14 });
+    }
+  }, [points, map]);
+  
+  return null;
+}
 
 const CallsMap = ({ calls, onSelectCall }: CallsMapProps) => {
   const regionStats = useMemo(() => {
@@ -107,6 +131,7 @@ const CallsMap = ({ calls, onSelectCall }: CallsMapProps) => {
             scrollWheelZoom={true} 
             style={{ height: "100%", width: "100%" }}
           >
+            <MapBounds points={mapPoints} />
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

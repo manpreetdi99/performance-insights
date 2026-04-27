@@ -66,7 +66,7 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
       endpoint,
       message: error instanceof Error ? error.message : "Failed to fetch",
       hint:
-        "The Lovable preview cannot reach localhost on your computer. Run the frontend locally too, or expose the Python API with a public tunnel URL.",
+        "The preview cannot reach localhost on your computer. Run the frontend locally too, or expose the Python API with a public tunnel URL.",
     });
   }
 }
