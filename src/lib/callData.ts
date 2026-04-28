@@ -26,7 +26,7 @@ export interface CallRecord {
   technology: string;
   callMode?: string | null;
   callType: string;
-  status: "completed" | "dropped" | "failed"; // Ενεργοποιούμε το auto-complete του IDE
+  status: "completed" | "dropped" | "failed" | "system release"; // Ενεργοποιούμε το auto-complete του IDE
   setupTime_ms: number;
   avgMos: number;
   downloadSpeed: number;
@@ -37,6 +37,7 @@ export interface CallRecord {
   latitude?: number | null;
   longitude?: number | null;
   comment?: string | null; // Optional comment field
+  asideFileName?: string | null; // Device / file name
   events: CallEvent[]; // Ένας πίνακας που περιέχει αντικείμενα τύπου CallEvent
 }
 

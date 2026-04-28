@@ -547,7 +547,9 @@ def get_results_kpi(
         if session_id:
             query += " WHERE [SessionId] = ?"
             params.append(session_id)
-            
+
+        query += " ORDER BY [MsgId]"
+
         cursor.execute(query, tuple(params))
 
         columns = [col[0] for col in cursor.description] if cursor.description else []

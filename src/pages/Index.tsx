@@ -48,6 +48,7 @@ const normalizeStatus = (status: string | null | undefined): CallRecord["status"
   const normalized = (status || "").toLowerCase();
   if (normalized.includes("drop")) return "dropped";
   if (normalized.includes("fail")) return "failed";
+  if (normalized.includes("system release") || normalized.includes("system realase")) return "system release";
   return "completed";
 };
 
@@ -114,6 +115,7 @@ const mapAllCallsRows = (rows: AllCallsRow[]): CallRecord[] => {
       latitude: row.latitude,
       longitude: row.longitude,
       comment: row.comment,
+      asideFileName: row.ASideFileName ?? null,
       events: [
         {
           timestamp: new Date().toISOString(),
