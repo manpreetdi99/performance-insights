@@ -151,6 +151,14 @@ export async function fetchGsmValues(
   return requestJson(`/api/gsm_values?${params.toString()}`);
 }
 
+export async function fetchGsmValuesBSide(
+  database: string,
+  session_id: string
+): Promise<{ gsmValuesBSide: any[] }> {
+  const params = new URLSearchParams({ database, session_id });
+  return requestJson(`/api/gsm_values_b_side?${params.toString()}`);
+}
+
 export async function fetchMosValues(
   database: string,
   session_id: string

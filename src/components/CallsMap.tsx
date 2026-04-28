@@ -71,7 +71,7 @@ const CallsMap = ({ calls, onSelectCall }: CallsMapProps) => {
   }, [calls]);
 
   const mapPoints = useMemo(() => {
-    const points: Record<string, { lat: number; lng: number; total: number; completed: number; dropped: number; failed: number; calls: CallRecord[] }> = {};
+    const points: Array<{ lat: number; lng: number; call: CallRecord }> = [];
     
     calls.forEach((c) => {
       let lat = c.latitude;
@@ -94,22 +94,19 @@ const CallsMap = ({ calls, onSelectCall }: CallsMapProps) => {
             return; // Skip if no coords at all
           }
         }
+        // Jitter fallback coordinates slightly so they don't perfectly overlap
+        lat += (Math.random() - 0.5) * 0.02;
+        lng += (Math.random() - 0.5) * 0.02;
+      } else {
+        // Also add tiny jitter to exact coordinates if they might overlap
+        lat += (Math.random() - 0.5) * 0.0005;
+        lng += (Math.random() - 0.5) * 0.0005;
       }
 
-      // Group by coordinate (rounded slightly to group nearby points within ~10 meters)
-      const rLat = Math.round(lat * 10000) / 10000;
-      const rLng = Math.round(lng * 10000) / 10000;
-      const key = `${rLat},${rLng}`;
-
-      if (!points[key]) {
-        points[key] = { lat: rLat, lng: rLng, total: 0, completed: 0, dropped: 0, failed: 0, calls: [] };
-      }
-      points[key].total++;
-      points[key][c.status]++;
-      points[key].calls.push(c);
+      points.push({ lat, lng, call: c });
     });
     
-    return Object.values(points);
+    return points;
   }, [calls]);
 
   return (
@@ -136,35 +133,45 @@ const CallsMap = ({ calls, onSelectCall }: CallsMapProps) => {
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
-            {mapPoints.map((point, idx) => {
-              const radius = Math.max(6, Math.min(20, 4 + point.total));
-              const failRate = (point.dropped + point.failed) / point.total;
-              const hasHighFailRate = failRate > 0.3;
+            {mapPoints.map((point) => {
+              const radius = 6;
+              const status = point.call.status;
+              let fillColor = "#3b82f6";
+              let color = "#2563eb";
+              let statusTextClass = "text-success";
+              
+              if (status === "dropped") {
+                fillColor = "#f59e0b";
+                color = "#d97706";
+                statusTextClass = "text-warning";
+              } else if (status === "failed") {
+                fillColor = "#ef4444";
+                color = "#dc2626";
+                statusTextClass = "text-destructive";
+              }
 
               return (
                 <CircleMarker
-                  key={idx}
+                  key={point.call.callId}
                   center={[point.lat, point.lng]}
                   radius={radius}
                   pathOptions={{
-                    fillColor: hasHighFailRate ? "#f59e0b" : "#3b82f6",
+                    fillColor,
                     fillOpacity: 0.6,
-                    color: hasHighFailRate ? "#ea580c" : "#2563eb",
+                    color,
                     weight: 2,
                   }}
                   eventHandlers={{
-                    click: () => point.calls[0] && onSelectCall(point.calls[0]),
+                    click: () => onSelectCall(point.call),
                   }}
                 >
                   <Tooltip direction="top" offset={[0, -10]} opacity={0.9}>
                     <div className="text-center font-sans space-y-1">
                       <div className="font-bold text-sm">
-                        {point.calls.length === 1 ? `Call ${point.calls[0].callId}` : `${point.total} calls`}
+                        Call {point.call.callId}
                       </div>
-                      <div className="text-xs text-muted-foreground space-x-2">
-                        <span className="text-success">{point.completed} ok</span>
-                        <span className="text-warning">{point.dropped} drop</span>
-                        <span className="text-destructive">{point.failed} fail</span>
+                      <div className="text-xs text-muted-foreground">
+                        Κατάσταση: <span className={statusTextClass}>{status === "completed" ? "Ολοκληρώθηκε" : (status === "dropped" ? "Διακόπηκε" : "Απέτυχε")}</span>
                       </div>
                     </div>
                   </Tooltip>

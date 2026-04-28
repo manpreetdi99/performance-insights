@@ -428,9 +428,64 @@ def get_gsm_values(
         return {"gsmValues": data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    
-    
-    
+
+@app.get("/api/gsm_values_b_side")
+def get_gsm_values_b_side(
+    database: str = Query(..., min_length=1),
+    session_id: str = Query(..., min_length=1)
+):
+    try:
+        conn = get_connection(database)
+        cursor = conn.cursor()
+
+        query = """
+            ;WITH pair_root AS (
+                SELECT TOP (1)
+                    CASE
+                        WHEN CA.Side = 'B' AND CA.SessionIdA IS NOT NULL THEN CA.SessionIdA
+                        ELSE CA.SessionId
+                    END AS ASessionId
+                FROM CallAnalysis CA
+                WHERE CA.SessionId = TRY_CONVERT(BIGINT, ?)
+                   OR CA.SessionIdA = TRY_CONVERT(BIGINT, ?)
+            ),
+            b_side AS (
+                SELECT TOP (1)
+                    CA.SessionId AS BSessionId
+                FROM CallAnalysis CA
+                INNER JOIN pair_root PR
+                    ON CA.SessionIdA = PR.ASessionId
+                WHERE CA.Side = 'B'
+            )
+            SELECT
+                G.[MsgId],
+                G.[SessionId],
+                G.[MsgTime],
+                G.[PosId],
+                G.[NetworkId],
+                G.[RxLevSub],
+                G.[RxQualSub]
+            FROM [GSMMeasReport] G
+            INNER JOIN b_side B
+                ON G.SessionId = B.BSessionId
+            ORDER BY G.MsgTime
+        """
+
+        cursor.execute(query, (session_id, session_id))
+
+        columns = [col[0] for col in cursor.description] if cursor.description else []
+        rows = cursor.fetchall() if cursor.description else []
+
+        data = []
+        for row in rows:
+            data.append({columns[idx]: row[idx] for idx in range(len(columns))})
+
+        conn.close()
+
+        return {"gsmValuesBSide": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/mos_values")
 def get_mos_values(
     database: str = Query(..., min_length=1),
