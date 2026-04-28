@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 import type { CallRecord } from "@/lib/callData";
-import { fetchLteValues, fetchLteValuesBSide, fetchGsmValues, fetchMosValues, updateCallComment, fetchKpiValues, fetchCallSideComparison, fetchTracelogValues, type CallSideComparisonRow, type TraceLogRow } from "@/lib/api";
+import { fetchLteValues, fetchLteValuesBSide, fetchGsmValues, fetchGsmValuesBSide, fetchMosValues, updateCallComment, fetchKpiValues, fetchCallSideComparison, fetchTracelogValues, type CallSideComparisonRow, type TraceLogRow } from "@/lib/api";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend, ReferenceLine } from "recharts";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 //ReferenceLine για γραμμες στο διαγραμμα, πχ για thresholds. 
@@ -42,12 +42,17 @@ function formatDateTime(iso: string): string {
 
 const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
   const [radioValues, setRadioValues] = useState<any[]>([]);
+  const [gsmValues, setGsmValues] = useState<any[]>([]);
+  const [bSideGsmValues, setBSideGsmValues] = useState<any[]>([]);
   const [mosValues, setMosValues] = useState<any[]>([]);
   const [kpiValues, setKpiValues] = useState<any[]>([]);
   const [tracelogValues, setTracelogValues] = useState<TraceLogRow[]>([]);
   const [sideComparison, setSideComparison] = useState<CallSideComparisonRow[]>([]);
   const [bSideLteValues, setBSideLteValues] = useState<any[]>([]);
   const [selectedLteSide, setSelectedLteSide] = useState<"A" | "B">("A");
+  const [srvccNetwork, setSrvccNetwork] = useState<"LTE" | "GSM">("LTE");
+  
+  const isGSMMode = call.callMode === "CS" || (call.callMode === "SRVCC" && srvccNetwork === "GSM");
   const [isLoadingRadio, setIsLoadingRadio] = useState(false);
   const [showStrength, setShowStrength] = useState(true);
   const [showQuality, setShowQuality] = useState(true);
@@ -55,6 +60,17 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
   const [isEditingComment, setIsEditingComment] = useState(false);
   const [isSavingComment, setIsSavingComment] = useState(false);
   const { toast } = useToast();
+  // Index του hovered row στο activeRadioValues (για ακριβή αντιστοίχιση με chartData)
+  const [hoveredRadioIndex, setHoveredRadioIndex] = useState<number | null>(null);
+  // Για TraceLog & KPI: αποθηκεύουμε το time string ώστε να βρούμε το κοντινότερο σημείο στο chart
+  const [hoveredTimeStr, setHoveredTimeStr] = useState<string | null>(null);
+
+  const toChartTime = (isoOrDate: string | null) => {
+    if (!isoOrDate) return null;
+    return new Date(isoOrDate).toLocaleTimeString("el-GR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  };
+
+
 
   const handleSaveComment = async () => {
     setIsSavingComment(true);
@@ -82,18 +98,23 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
     async function loadRadio() {
       setIsLoadingRadio(true);
       try {
-        const [radioRes, mosRes, kpiRes, comparisonRes, bSideLteRes, tracelogRes] = await Promise.allSettled([
-          call.callMode === "CS" ? fetchGsmValues(database, call.callId) : fetchLteValues(database, call.callId),
+        const [lteRes, gsmRes, mosRes, kpiRes, comparisonRes, bSideLteRes, tracelogRes, bSideGsmRes] = await Promise.allSettled([
+          call.callMode !== "CS" ? fetchLteValues(database, call.callId) : Promise.resolve({ lteValues: [] }),
+          call.callMode === "CS" || call.callMode === "SRVCC" ? fetchGsmValues(database, call.callId) : Promise.resolve({ gsmValues: [] }),
           fetchMosValues(database, call.callId),
           fetchKpiValues(database, call.callId),
           fetchCallSideComparison(database, call.callId),
           call.callMode === "CS" ? Promise.resolve({ lteValuesBSide: [] }) : fetchLteValuesBSide(database, call.callId),
-          fetchTracelogValues(database, call.callId)
+          fetchTracelogValues(database, call.callId),
+          call.callMode === "CS" || call.callMode === "SRVCC" ? fetchGsmValuesBSide(database, call.callId) : Promise.resolve({ gsmValuesBSide: [] })
         ]);
 
-        if (radioRes.status === "fulfilled") {
-          const res = radioRes.value as any;
-          setRadioValues(res.gsmValues || res.lteValues || []);
+        if (lteRes.status === "fulfilled") {
+          setRadioValues((lteRes.value as any).lteValues || []);
+        }
+
+        if (gsmRes.status === "fulfilled") {
+          setGsmValues((gsmRes.value as any).gsmValues || []);
         }
 
         if (mosRes.status === "fulfilled") {
@@ -111,9 +132,15 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
         }
 
         if (bSideLteRes.status === "fulfilled") {
-          setBSideLteValues(bSideLteRes.value.lteValuesBSide || []);
+          setBSideLteValues((bSideLteRes.value as any).lteValuesBSide || []);
         } else {
           setBSideLteValues([]);
+        }
+
+        if (bSideGsmRes.status === "fulfilled") {
+          setBSideGsmValues((bSideGsmRes.value as any).gsmValuesBSide || []);
+        } else {
+          setBSideGsmValues([]);
         }
 
         if (tracelogRes.status === "fulfilled") {
@@ -129,14 +156,16 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
     }
     if (call.callId && database) {
       setSelectedLteSide("A");
+      setSrvccNetwork("LTE");
       loadRadio();
     }
   }, [database, call.callId, call.callMode]);
 
   const activeRadioValues = useMemo(() => {
-    if (call.callMode === "CS") return radioValues;
+    if (call.callMode === "CS") return selectedLteSide === "B" ? bSideGsmValues : gsmValues;
+    if (call.callMode === "SRVCC" && srvccNetwork === "GSM") return selectedLteSide === "B" ? bSideGsmValues : gsmValues;
     return selectedLteSide === "B" ? bSideLteValues : radioValues;
-  }, [call.callMode, selectedLteSide, radioValues, bSideLteValues]);
+  }, [call.callMode, selectedLteSide, radioValues, bSideLteValues, gsmValues, bSideGsmValues, srvccNetwork]);
 
   const metrics = [
     { label: "Download", value: `${call.downloadSpeed.toFixed(1)} Mbps`, icon: ArrowDown, color: "text-primary" },
@@ -150,20 +179,27 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
 
   const chartData = useMemo(() => {
     return activeRadioValues.map(val => {
-      const isCS = call.callMode === "CS";
+      const isGSM = isGSMMode;
       
       // Βοηθητική συνάρτηση για να μην μετατρέπεται το null/κενό σε 0 από την Number()
       const parseValue = (v: any) => (v == null || v === "") ? undefined : Number(v);
 
       return {
         time: new Date(val.MsgTime).toLocaleTimeString("el-GR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-        RxLevSub: isCS ? parseValue(val.RxLevSub) : undefined,
-        RxQualSub: isCS ? parseValue(val.RxQualSub) : undefined,
-        RSRP: !isCS ? parseValue(val.RSRP) : undefined,
-        RSRQ: !isCS ? parseValue(val.RSRQ) : undefined,
+        RxLevSub: isGSM ? parseValue(val.RxLevSub) : undefined,
+        RxQualSub: isGSM ? parseValue(val.RxQualSub) : undefined,
+        RSRP: !isGSM ? parseValue(val.RSRP) : undefined,
+        RSRQ: !isGSM ? parseValue(val.RSRQ) : undefined,
       };
     });
-  }, [activeRadioValues, call.callMode]);
+  }, [activeRadioValues, isGSMMode]);
+
+  // Ποιό x-value (time string) να δείξει στο ReferenceLine — ορίζεται ΜΕΤΑ το chartData
+  const chartHighlightTime = hoveredRadioIndex !== null
+    ? chartData[hoveredRadioIndex]?.time ?? null
+    : hoveredTimeStr !== null
+      ? (chartData.find(d => d.time === hoveredTimeStr)?.time ?? null)
+      : null;
 
   const bSideLteSummary = useMemo(() => {
     if (!bSideLteValues || bSideLteValues.length === 0) {
@@ -312,7 +348,7 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
                       onChange={(e) => setShowStrength(e.target.checked)}
                       className="h-3.5 w-3.5 rounded-sm border-primary text-primary focus:ring-primary"
                     />
-                    {call.callMode === "CS" ? "RxLev" : "RSRP"}
+                    {isGSMMode ? "RxLev" : "RSRP"}
                   </label>
                   <label className="flex items-center gap-1.5 text-xs font-medium text-foreground cursor-pointer select-none">
                     <input
@@ -321,7 +357,7 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
                       onChange={(e) => setShowQuality(e.target.checked)}
                       className="h-3.5 w-3.5 rounded-sm border-primary text-primary focus:ring-primary"
                     />
-                    {call.callMode === "CS" ? "RxQual" : "RSRQ"}
+                    {isGSMMode ? "RxQual" : "RSRQ"}
                   </label>
                 </div>
               )}
@@ -412,7 +448,7 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
           <div className="mt-3 pt-3 border-t border-border">
             <h3 className="text-xs font-semibold text-foreground mb-2 flex items-center gap-1.5">
               <Activity className="h-3.5 w-3.5 text-primary" />
-              {call.callMode === "CS" ? "GSM Signal Chart (RxLev / RxQual)" : "LTE Signal Chart (RSRP / RSRQ)"}
+              {isGSMMode ? "GSM Signal Chart (RxLev / RxQual)" : "LTE Signal Chart (RSRP / RSRQ)"}
             </h3>
             <div className="h-[140px] w-full">
               <ResponsiveContainer width="100%" height="100%">
@@ -420,7 +456,7 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
                   <CartesianGrid strokeDasharray="3 3" opacity={0.2} vertical={false} />
                   <XAxis dataKey="time" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} axisLine={false} tickLine={false} />
                   
-                  {call.callMode === "CS" ? (
+                  {isGSMMode ? (
                     <>
                       {showStrength && <YAxis yAxisId="left" domain={[-105, dataMax => Math.max(dataMax, -60)]} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} axisLine={false} tickLine={false} />}
                       {showQuality && <YAxis yAxisId="right" orientation="right" reversed={true} domain={[0, 7]} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} axisLine={false} tickLine={false} />}
@@ -432,6 +468,15 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
                       <Legend wrapperStyle={{ fontSize: '12px' }} />
                       {showStrength && <Line yAxisId="left" type="monotone" dataKey="RxLevSub" stroke="hsl(200, 80%, 55%)" dot={false} strokeWidth={2} name="RxLevSub" />}
                       {showQuality && <Line yAxisId="right" type="monotone" dataKey="RxQualSub" stroke="hsl(0, 72%, 55%)" dot={false} strokeWidth={2} name="RxQualSub" />}
+                      {chartHighlightTime && (
+                        <ReferenceLine
+                          x={chartHighlightTime}
+                          yAxisId={showStrength ? "left" : showQuality ? "right" : "left"}
+                          stroke="hsl(180, 90%, 55%)"
+                          strokeWidth={3}
+                          label={{ value: "│", position: "insideTopLeft", fill: "hsl(180, 90%, 65%)", fontSize: 18, fontWeight: 800 }}
+                        />
+                      )}
                     </>
                   ) : (
                     <>
@@ -445,6 +490,15 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
                       <Legend wrapperStyle={{ fontSize: '12px' }} />
                       {showStrength && <Line yAxisId="left" type="monotone" dataKey="RSRP" stroke="hsl(200, 80%, 55%)" dot={false} strokeWidth={2} name="RSRP" />}
                       {showQuality && <Line yAxisId="right" type="monotone" dataKey="RSRQ" stroke="hsl(45, 93%, 58%)" dot={false} strokeWidth={2} name="RSRQ" />}
+                      {chartHighlightTime && (
+                        <ReferenceLine
+                          x={chartHighlightTime}
+                          yAxisId={showStrength ? "left" : showQuality ? "right" : "left"}
+                          stroke="hsl(180, 90%, 55%)"
+                          strokeWidth={3}
+                          label={{ value: "│", position: "insideTopLeft", fill: "hsl(180, 90%, 65%)", fontSize: 18, fontWeight: 800 }}
+                        />
+                      )}
                     </>
                   )}
                 </LineChart>
@@ -477,14 +531,28 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
-                  {tracelogValues.map((val, idx) => (
-                    <tr key={`${val.FullDate ?? idx}-${idx}`} className="hover:bg-muted/30">
-                      <td className="px-2 py-1">{val.FullDate ? formatDateTime(val.FullDate) : "N/A"}</td>
-                      <td className="px-2 py-1 font-mono">{val.Side ?? "N/A"}</td>
-                      <td className="px-2 py-1 font-mono">{val.SessionId ?? "N/A"}</td>
-                      <td className="px-2 py-1 font-mono whitespace-pre-wrap break-words max-w-[520px]">{val.Info ?? "N/A"}</td>
-                    </tr>
-                  ))}
+                  {tracelogValues.map((val, idx) => {
+                    const tStr = toChartTime(val.FullDate ?? null);
+                    const isActive = tStr !== null && tStr === hoveredTimeStr;
+                    return (
+                      <tr
+                        key={`${val.FullDate ?? idx}-${idx}`}
+                        style={isActive ? { boxShadow: "inset 3px 0 0 hsl(180, 90%, 55%)" } : undefined}
+                        className={`transition-all duration-100 cursor-pointer ${
+                          isActive
+                            ? "bg-cyan-500/10"
+                            : "hover:bg-muted/40"
+                        }`}
+                        onMouseEnter={() => { setHoveredRadioIndex(null); setHoveredTimeStr(tStr); }}
+                        onMouseLeave={() => setHoveredTimeStr(null)}
+                      >
+                        <td className="px-2 py-1">{val.FullDate ? formatDateTime(val.FullDate) : "N/A"}</td>
+                        <td className="px-2 py-1 font-mono">{val.Side ?? "N/A"}</td>
+                        <td className="px-2 py-1 font-mono">{val.SessionId ?? "N/A"}</td>
+                        <td className="px-2 py-1 font-mono whitespace-pre-wrap break-words max-w-[520px]">{val.Info ?? "N/A"}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -518,19 +586,32 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
-                  {kpiValues.map((val, idx) => (
-                    <tr key={idx} className="hover:bg-muted/30">
-                      <td className="px-2 py-1 font-mono">{val.KPIId}</td>
-                      <td className="px-2 py-1 font-mono">{val.ErrorCode}</td>
-                      {/* <td className="px-2 py-1 font-mono">{val.Value1}</td>
-                      <td className="px-2 py-1 font-mono">{val.Value2}</td> */}
-                      <td className="px-2 py-1 font-mono max-w-[100px] break-all whitespace-normal overflow-hidden">{val.Value3}</td>
-                      <td className="px-2 py-1 font-mono max-w-[100px] break-all whitespace-normal overflow-hidden">{val.Value4}</td>
-                      <td className="px-2 py-1 font-mono max-w-[100px] break-all whitespace-normal overflow-hidden">{val.Value5}</td>
-
-                      <td className="px-2 py-2">{formatDateTime(val.StartTime)}</td>
-                    </tr>
-                  ))}
+                  {kpiValues.map((val, idx) => {
+                    const tStr = toChartTime(val.StartTime ?? null);
+                    const isActive = tStr !== null && tStr === hoveredTimeStr;
+                    return (
+                      <tr
+                        key={idx}
+                        style={isActive ? { boxShadow: "inset 3px 0 0 hsl(180, 90%, 55%)" } : undefined}
+                        className={`transition-all duration-100 cursor-pointer ${
+                          isActive
+                            ? "bg-cyan-500/10"
+                            : "hover:bg-muted/40"
+                        }`}
+                        onMouseEnter={() => { setHoveredRadioIndex(null); setHoveredTimeStr(tStr); }}
+                        onMouseLeave={() => setHoveredTimeStr(null)}
+                      >
+                        <td className="px-2 py-1 font-mono">{val.KPIId}</td>
+                        <td className="px-2 py-1 font-mono">{val.ErrorCode}</td>
+                        {/* <td className="px-2 py-1 font-mono">{val.Value1}</td>
+                        <td className="px-2 py-1 font-mono">{val.Value2}</td> */}
+                        <td className="px-2 py-1 font-mono max-w-[100px] break-all whitespace-normal overflow-hidden">{val.Value3}</td>
+                        <td className="px-2 py-1 font-mono max-w-[100px] break-all whitespace-normal overflow-hidden">{val.Value4}</td>
+                        <td className="px-2 py-1 font-mono max-w-[100px] break-all whitespace-normal overflow-hidden">{val.Value5}</td>
+                        <td className="px-2 py-2">{formatDateTime(val.StartTime)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -544,9 +625,29 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
               <Signal className="h-4 w-4 text-primary" />
-              {call.callMode === "CS" ? "GSM Measurements" : "LTE Measurements"}
+              {isGSMMode ? "GSM Measurements" : "LTE Measurements"}
             </h3>
-            {call.callMode !== "CS" && (
+            
+            <div className="flex items-center gap-2">
+              {call.callMode === "SRVCC" && (
+                <div className="inline-flex rounded-md border border-border overflow-hidden mr-2">
+                  <button
+                    type="button"
+                    onClick={() => { setSrvccNetwork("LTE"); setSelectedLteSide("A"); }}
+                    className={`px-2 py-1 text-xs ${srvccNetwork === "LTE" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground hover:bg-muted/80"}`}
+                  >
+                    LTE
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setSrvccNetwork("GSM"); setSelectedLteSide("A"); }}
+                    className={`px-2 py-1 text-xs border-l border-border ${srvccNetwork === "GSM" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground hover:bg-muted/80"}`}
+                  >
+                    GSM
+                  </button>
+                </div>
+              )}
+
               <div className="inline-flex rounded-md border border-border overflow-hidden">
                 <button
                   type="button"
@@ -563,7 +664,7 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
                   B-side
                 </button>
               </div>
-            )}
+            </div>
           </div>
 
          
@@ -572,7 +673,7 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
             <p className="text-xs text-muted-foreground">Φόρτωση δεδομένων...</p>
           ) : activeRadioValues && activeRadioValues.length > 0 ? (
             <div className="overflow-x-auto max-h-[300px] overflow-y-auto flex">
-              {call.callMode === "CS" ? (
+              {isGSMMode ? (
                 <table className="w-full text-xs text-center">
                   <thead className="sticky top-0 bg-muted border-b border-border z-10">
                     <tr>
@@ -588,9 +689,18 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
                       const rxColor = rxAbs >= 95 ? "text-destructive" : rxAbs >= 90 ? "text-warning" : "text-primary";
                       const rxqAbs = Math.abs(Number(val.RxQualSub));
                       const rsrqColor = rxqAbs >= 6 ? "text-destructive" : rxqAbs >= 5 ? "text-warning" : "text-primary";
+                      const isActive = hoveredRadioIndex === idx;
 
                       return (
-                        <tr key={idx} className="hover:bg-muted/30">
+                        <tr
+                          key={idx}
+                          style={isActive ? { boxShadow: "inset 3px 0 0 hsl(180, 90%, 55%)" } : undefined}
+                          className={`transition-all duration-100 cursor-pointer ${
+                            isActive ? "bg-cyan-500/10" : "hover:bg-muted/40"
+                          }`}
+                          onMouseEnter={() => { setHoveredTimeStr(null); setHoveredRadioIndex(idx); }}
+                          onMouseLeave={() => setHoveredRadioIndex(null)}
+                        >
                           <td className="px-2 py-2 font-mono">{val.SessionId}</td>
                           <td className={`px-2 py-2 font-mono font-bold ${rxColor}`}>{val.RxLevSub}</td>
                           <td className={`px-2 py-2 font-mono font-bold ${rsrqColor}`}>{val.RxQualSub}</td>
@@ -616,9 +726,18 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
                       const rsrpColor = rsrpAbs >= 120 ? "text-destructive" : rsrpAbs >= 115 ? "text-warning" : "text-primary";
                       const rsrqAbs = Math.abs(Number(val.RSRQ));
                       const rsrqColor = rsrqAbs >= 18 ? "text-destructive" : rsrqAbs >= 16 ? "text-warning" : "text-primary";
+                      const isActive = hoveredRadioIndex === idx;
 
                       return (
-                        <tr key={idx} className="hover:bg-muted/30">
+                        <tr
+                          key={idx}
+                          style={isActive ? { boxShadow: "inset 3px 0 0 hsl(180, 90%, 55%)" } : undefined}
+                          className={`transition-all duration-100 cursor-pointer ${
+                            isActive ? "bg-cyan-500/10" : "hover:bg-muted/40"
+                          }`}
+                          onMouseEnter={() => { setHoveredTimeStr(null); setHoveredRadioIndex(idx); }}
+                          onMouseLeave={() => setHoveredRadioIndex(null)}
+                        >
                           <td className="px-2 py-2 font-mono">{val.EARFCN}</td>
                           <td className={`px-2 py-2 font-mono font-bold ${rsrpColor}`}>{val.RSRP}</td>
                           <td className={`px-2 py-2 font-mono font-bold ${rsrqColor}`}>{val.RSRQ}</td>
