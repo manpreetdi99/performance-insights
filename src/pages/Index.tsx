@@ -9,6 +9,7 @@ import BenchmarkCharts from "@/components/BenchmarkCharts";
 import StatsCards from "@/components/StatsCards";
 import CallDetail from "@/components/CallDetail";
 import CallsMap from "@/components/CallsMap";
+import AntennasMap from "@/components/AntennasMap";
 import { useLocalStorage } from "@/hooks/use-local-storage"; //βιβλιοθηκη για αποθηκευση τιμων στο local storage του browser
 import type { CallRecord } from "@/lib/callData";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -649,6 +650,9 @@ const Index = () => {
               <TabsTrigger value="detail" className="gap-1.5 text-xs" disabled={!selectedCall}>
                 <BarChart3 className="h-3.5 w-3.5" /> Call Detail
               </TabsTrigger>
+              <TabsTrigger value="map2" className="gap-1.5 text-xs">
+                <MapPin className="h-3.5 w-3.5 text-cyan-400" /> Antennas
+              </TabsTrigger>
             </TabsList>
           </div>
 
@@ -1064,6 +1068,10 @@ const Index = () => {
                 </p>
               </div>
             )}
+          </TabsContent>
+
+          <TabsContent value="map2">
+            <AntennasMap />
           </TabsContent>
         </Tabs>
       </main>
