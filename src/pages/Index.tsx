@@ -515,36 +515,18 @@ const Index = () => {
                 isRunning={isRunning}
                 collectionNames={collectionNames}
                 collectionsLoading={collectionsLoading}
+                results={results}
+                totalTime={totalTime}
               />
             </section>
 
             {isRunning && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center justify-center py-16">
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center justify-center py-10">
                 <div className="flex flex-col items-center gap-3">
                   <div className="h-8 w-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                  <p className="text-sm text-muted-foreground">Εκτέλεση benchmarks...</p>
+                  <p className="text-sm text-muted-foreground">Running queries…</p>
                 </div>
               </motion.div>
-            )}
-
-            {!isRunning && results.length > 0 && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-                <StatsCards results={results} totalTime={totalTime} />
-                <BenchmarkCharts results={results} />
-                <ResultsTable results={results} />
-              </motion.div>
-            )}
-
-            {!isRunning && results.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-20 text-center">
-                <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4">
-                  <BarChart3 className="h-7 w-7 text-muted-foreground" />
-                </div>
-                <h3 className="text-lg font-medium text-foreground mb-1">Έτοιμο για Benchmarking</h3>
-                <p className="text-sm text-muted-foreground max-w-md">
-                  Προσθέστε τα queries σας και πατήστε "Run Benchmark" για αποτελέσματα.
-                </p>
-              </div>
             )}
           </TabsContent>
 

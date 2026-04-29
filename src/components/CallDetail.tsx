@@ -394,6 +394,9 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
                   <option value="LC LTE">LC LTE</option>
                   <option value="LQ LTE">LQ LTE</option>
                   <option value="CORE NETWORK (DEACTIVATE BEARER)">CORE NETWORK (DEACTIVATE BEARER)</option>
+                  <option value="FAKE UE STUCK">FAKE UE STUCK</option>
+                  <option value="FAKE NO SYNC">FAKE NO SYNC</option>
+                  <option value="FAKE EOF">FAKE EOF</option>
                   <option value="">— Εκκαθάριση σχολίου</option>
                 </select>
                 <Textarea

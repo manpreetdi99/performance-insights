@@ -55,6 +55,12 @@ def update_call_comment(req: CommentRequest):
         else:
             cursor.execute("INSERT INTO AnalysisCommentSessionsBridge (sessionID, commentId) VALUES (?, ?)", (req.session_id, comment_id))
             
+        # If comment starts with 'fake' or 'FAKE', set session as invalid (Valid = 0), otherwise Valid = 1
+        if req.comment and req.comment.lower().startswith("fake"):
+            cursor.execute("UPDATE Sessions SET Valid = 0 WHERE SessionId = ?", (req.session_id,))
+        else:
+            cursor.execute("UPDATE Sessions SET Valid = 1 WHERE SessionId = ?", (req.session_id,))
+
         conn.commit()
         conn.close()
 
@@ -66,6 +72,10 @@ def update_call_comment(req: CommentRequest):
             conn = get_connection(req.database)
             cursor = conn.cursor()
             cursor.execute("UPDATE Sessions SET InvalidReason = ? WHERE SessionId = ?", (req.comment, req.session_id))
+            if req.comment and req.comment.lower().startswith("fake"):
+                cursor.execute("UPDATE Sessions SET Valid = 0 WHERE SessionId = ?", (req.session_id,))
+            else:
+                cursor.execute("UPDATE Sessions SET Valid = 1 WHERE SessionId = ?", (req.session_id,))
             conn.commit()
             conn.close()
             return {"message": "Comment updated successfully in Sessions"}
