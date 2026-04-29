@@ -536,13 +536,25 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
                   {tracelogValues.map((val, idx) => {
                     const tStr = toChartTime(val.FullDate ?? null);
                     const isActive = tStr !== null && tStr === hoveredTimeStr;
+                    const isCritical = val.Info != null && [
+                      "No sync signal found",
+                      "Task stopped",
+                      "Close Engine",
+                      "System Release",
+                    ].some(kw => val.Info!.includes(kw));
                     return (
                       <tr
                         key={`${val.FullDate ?? idx}-${idx}`}
-                        style={isActive ? { boxShadow: "inset 3px 0 0 hsl(180, 90%, 55%)" } : undefined}
-                        className={`transition-all duration-100 cursor-pointer ${isActive
-                          ? "bg-cyan-500/10"
-                          : "hover:bg-muted/40"
+                        style={isCritical
+                          ? { boxShadow: "inset 3px 0 0 hsl(0, 72%, 51%)" }
+                          : isActive
+                            ? { boxShadow: "inset 3px 0 0 hsl(180, 90%, 55%)" }
+                            : undefined}
+                        className={`transition-all duration-100 cursor-pointer ${isCritical
+                          ? "bg-red-500/15 text-red-400"
+                          : isActive
+                            ? "bg-cyan-500/10"
+                            : "hover:bg-muted/40"
                           }`}
                         onMouseEnter={() => { setHoveredRadioIndex(null); setHoveredTimeStr(tStr); }}
                         onMouseLeave={() => setHoveredTimeStr(null)}
