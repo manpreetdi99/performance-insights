@@ -337,7 +337,7 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
 
             <div className="flex items-center gap-3 flex-wrap">
               <h2 className="text-sm font-bold font-mono text-foreground">{call.region} · {call.callId}</h2>
-              {radioValues && radioValues.length > 0 && (
+              {activeRadioValues && activeRadioValues.length > 0 && (
                 <div className="flex items-center gap-3 bg-muted/50 px-2 py-0.5 rounded border border-border/50">
                   <label className="flex items-center gap-1.5 text-xs font-medium text-foreground cursor-pointer select-none">
                     <input
@@ -660,23 +660,42 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
                 </div>
               )}
 
-              <div className="inline-flex rounded-md border border-border overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => setSelectedLteSide("A")}
-                  className={`px-2 py-1 text-xs ${selectedLteSide === "A" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground hover:bg-muted/80"}`}
-                >
-                  A-side
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedLteSide("B")}
-                  className={`px-2 py-1 text-xs border-l border-border ${selectedLteSide === "B" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground hover:bg-muted/80"}`}
-                >
-                  B-side
-                </button>
-              </div>
+              {/* Show A/B toggle only when B-side data exists for the current mode */}
+              {(() => {
+                const hasBSide = isGSMMode
+                  ? bSideGsmValues.length > 0
+                  : bSideLteValues.length > 0;
+                if (!hasBSide && isLoadingRadio) {
+                  // While loading, show the toggle (placeholder) so layout doesn't jump
+                  return (
+                    <div className="inline-flex rounded-md border border-border overflow-hidden opacity-40 pointer-events-none">
+                      <button type="button" className="px-2 py-1 text-xs bg-primary text-primary-foreground">A-side</button>
+                      <button type="button" className="px-2 py-1 text-xs border-l border-border bg-muted text-foreground">B-side</button>
+                    </div>
+                  );
+                }
+                if (!hasBSide) return null; // No B-side data — hide toggle entirely
+                return (
+                  <div className="inline-flex rounded-md border border-border overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedLteSide("A")}
+                      className={`px-2 py-1 text-xs ${selectedLteSide === "A" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground hover:bg-muted/80"}`}
+                    >
+                      A-side
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedLteSide("B")}
+                      className={`px-2 py-1 text-xs border-l border-border ${selectedLteSide === "B" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground hover:bg-muted/80"}`}
+                    >
+                      B-side
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
+
           </div>
 
 
