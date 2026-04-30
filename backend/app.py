@@ -338,21 +338,24 @@ def get_lte_values(
         cursor = conn.cursor()
 
         query = """
-            SELECT [MsgId]
-                  ,[SessionId]
-                  ,[MsgTime]
-                  ,[PosId]
-                  ,[NetworkId]
-                  ,[EARFCN]
-                  ,[PhyCellId]
-                  ,round([RSRP], 2) AS [RSRP]
-                  ,round([RSRQ], 2) AS [RSRQ]
-                  ,round([SINR0], 2) AS [SINR0]
-                  ,round([SINR1], 2) AS [SINR1]
-                  ,[LTEServingCellInfoId]
-              FROM [LTEMeasurementReport]
-              WHERE [SessionId] = ?
-              ORDER BY MsgTime
+            SELECT lmr.[MsgId]
+                  ,lmr.[SessionId]
+                  ,lmr.[MsgTime]
+                  ,lmr.[PosId]
+                  ,lmr.[NetworkId]
+                  ,lmr.[EARFCN]
+                  ,lmr.[PhyCellId]
+                  ,round(lmr.[RSRP], 2) AS [RSRP]
+                  ,round(lmr.[RSRQ], 2) AS [RSRQ]
+                  ,round(lmr.[SINR0], 2) AS [SINR0]
+                  ,round(lmr.[SINR1], 2) AS [SINR1]
+                  ,lmr.[LTEServingCellInfoId]
+                  ,p.Latitude
+                  ,p.Longitude
+              FROM [LTEMeasurementReport] lmr
+              LEFT JOIN Position p ON p.PosId = lmr.PosId
+              WHERE lmr.[SessionId] = ?
+              ORDER BY lmr.MsgTime
         """
 
         cursor.execute(query, (session_id,))
@@ -369,6 +372,34 @@ def get_lte_values(
         return {"lteValues": data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/cell_info")
+def get_cell_info(
+    database: str = Query(..., min_length=1),
+    session_id: str = Query(..., min_length=1)
+):
+    try:
+        conn = get_connection(database)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT TOP 1
+                dci.eNBId,
+                fl.EARFCN,
+                fl.PhyCellId
+            FROM FactLTERadio fl
+            LEFT JOIN DmnCellInformation dci ON fl.DmnIdCellInformation = dci.DmnId
+            WHERE fl.SessionId = ?
+              AND dci.eNBId IS NOT NULL
+            ORDER BY fl.FullDate
+        """, (session_id,))
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            return {"eNBId": row[0], "EARFCN": row[1], "PCI": row[2]}
+        return {"eNBId": None, "EARFCN": None, "PCI": None}
+    except Exception as e:
+        return {"eNBId": None, "EARFCN": None, "PCI": None}
 
 
 @app.get("/api/lte_values_b_side")
@@ -479,16 +510,19 @@ def get_gsm_values(
         cursor = conn.cursor()
 
         query = """
-            SELECT [MsgId]
-                  ,[SessionId]
-                  ,[MsgTime]
-                  ,[PosId]
-                  ,[NetworkId]
-                  ,[RxLevSub]
-                  ,[RxQualSub]
-              FROM [GSMMeasReport]
-              WHERE [SessionId] = ?
-              ORDER BY MsgTime
+            SELECT g.[MsgId]
+                  ,g.[SessionId]
+                  ,g.[MsgTime]
+                  ,g.[PosId]
+                  ,g.[NetworkId]
+                  ,g.[RxLevSub]
+                  ,g.[RxQualSub]
+                  ,p.Latitude
+                  ,p.Longitude
+              FROM [GSMMeasReport] g
+              LEFT JOIN Position p ON p.PosId = g.PosId
+              WHERE g.[SessionId] = ?
+              ORDER BY g.MsgTime
         """
 
         cursor.execute(query, (session_id,))
@@ -795,4 +829,4 @@ def get_antennas(
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="geo4g.xlsx not found")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))

@@ -4,11 +4,13 @@ import {
   ArrowLeft, Signal, Activity, Gauge, ArrowDown, ArrowUp,
   Wifi, Timer, Save, Edit2
 } from "lucide-react";
+import { MapContainer, TileLayer, CircleMarker, Polyline, useMap } from "react-leaflet";
+import "leaflet/dist/leaflet.css";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 import type { CallRecord } from "@/lib/callData";
-import { fetchLteValues, fetchLteValuesBSide, fetchGsmValues, fetchGsmValuesBSide, fetchMosValues, updateCallComment, fetchKpiValues, fetchCallSideComparison, fetchTracelogValues, type CallSideComparisonRow, type TraceLogRow } from "@/lib/api";
+import { fetchLteValues, fetchLteValuesBSide, fetchGsmValues, fetchGsmValuesBSide, fetchMosValues, updateCallComment, fetchKpiValues, fetchCallSideComparison, fetchTracelogValues, fetchCellInfo, fetchAntennas, type CallSideComparisonRow, type TraceLogRow, type AntennaRow } from "@/lib/api";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend, ReferenceLine } from "recharts";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 //ReferenceLine για γραμμες στο διαγραμμα, πχ για thresholds. 
@@ -29,6 +31,47 @@ interface CallDetailProps {
  * Δέχεται σαν είσοδο (iso) ένα string και εγγυάται(: string) 
  * ότι το αποτέλεσμά της θα είναι επίσης string.
  */
+function rsrpColor(val: number | null | undefined): string {
+  if (val == null) return "#6b7280";
+  if (val >= -100) return "#22c55e";
+  if (val >= -115) return "#f97316";
+  return "#ef4444";
+}
+
+function rxLevColor(val: number | null | undefined): string {
+  if (val == null) return "#6b7280";
+  if (val >= -88) return "#22c55e";
+  if (val >= -92) return "#f97316";
+  return "#ef4444";
+}
+
+function MapAutoFit({ points }: { points: Array<[number, number]> }) {
+  const map = useMap();
+  useEffect(() => {
+    if (points.length === 0) return;
+    if (points.length === 1) { map.setView(points[0], 14); return; }
+    const lats = points.map(p => p[0]);
+    const lngs = points.map(p => p[1]);
+    map.fitBounds(
+      [[Math.min(...lats), Math.min(...lngs)], [Math.max(...lats), Math.max(...lngs)]],
+      { padding: [10, 10], maxZoom: 16 }
+    );
+  }, [points, map]);
+  return null;
+}
+
+function haversineM(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function fmtDist(m: number): string {
+  return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(2)} km`;
+}
+
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString("el-GR", {
     day: "2-digit",
@@ -51,6 +94,9 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
   const [bSideLteValues, setBSideLteValues] = useState<any[]>([]);
   const [selectedLteSide, setSelectedLteSide] = useState<"A" | "B">("A");
   const [srvccNetwork, setSrvccNetwork] = useState<"LTE" | "GSM">("LTE");
+
+  const [cellInfo, setCellInfo] = useState<{ eNBId: number | null; EARFCN: number | null; PCI: number | null } | null>(null);
+  const [matchedAntenna, setMatchedAntenna] = useState<{ lat: number; lon: number; cellName: string | null; distanceM: number } | null>(null);
 
   const isGSMMode = call.callMode === "CS" || (call.callMode === "SRVCC" && srvccNetwork === "GSM");
   const [isLoadingRadio, setIsLoadingRadio] = useState(false);
@@ -98,7 +144,7 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
     async function loadRadio() {
       setIsLoadingRadio(true);
       try {
-        const [lteRes, gsmRes, mosRes, kpiRes, comparisonRes, bSideLteRes, tracelogRes, bSideGsmRes] = await Promise.allSettled([
+        const [lteRes, gsmRes, mosRes, kpiRes, comparisonRes, bSideLteRes, tracelogRes, bSideGsmRes, cellInfoRes] = await Promise.allSettled([
           call.callMode !== "CS" ? fetchLteValues(database, call.callId) : Promise.resolve({ lteValues: [] }),
           call.callMode === "CS" || call.callMode === "SRVCC" ? fetchGsmValues(database, call.callId) : Promise.resolve({ gsmValues: [] }),
           fetchMosValues(database, call.callId),
@@ -106,7 +152,8 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
           fetchCallSideComparison(database, call.callId),
           call.callMode === "CS" ? Promise.resolve({ lteValuesBSide: [] }) : fetchLteValuesBSide(database, call.callId),
           fetchTracelogValues(database, call.callId),
-          call.callMode === "CS" || call.callMode === "SRVCC" ? fetchGsmValuesBSide(database, call.callId) : Promise.resolve({ gsmValuesBSide: [] })
+          call.callMode === "CS" || call.callMode === "SRVCC" ? fetchGsmValuesBSide(database, call.callId) : Promise.resolve({ gsmValuesBSide: [] }),
+          call.callMode !== "CS" ? fetchCellInfo(database, call.callId) : Promise.resolve({ eNBId: null, EARFCN: null, PCI: null })
         ]);
 
         if (lteRes.status === "fulfilled") {
@@ -148,6 +195,10 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
         } else {
           setTracelogValues([]);
         }
+
+        if (cellInfoRes.status === "fulfilled") {
+          setCellInfo(cellInfoRes.value as any);
+        }
       } catch (err) {
         console.error("Failed to load metrics", err);
       } finally {
@@ -160,6 +211,31 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
       loadRadio();
     }
   }, [database, call.callId, call.callMode]);
+
+  useEffect(() => {
+    const isCosmoteFree = call.region?.toLowerCase().includes("cosmote free");
+    if (!isCosmoteFree || !cellInfo || cellInfo.PCI === null) {
+      setMatchedAntenna(null);
+      return;
+    }
+    const gpsPoints = radioValues
+      .filter((v: any) => v.Latitude != null && v.Longitude != null)
+      .map((v: any) => ({ lat: Number(v.Latitude), lon: Number(v.Longitude) }));
+    if (gpsPoints.length === 0) { setMatchedAntenna(null); return; }
+    const avgLat = gpsPoints.reduce((s: number, p: any) => s + p.lat, 0) / gpsPoints.length;
+    const avgLon = gpsPoints.reduce((s: number, p: any) => s + p.lon, 0) / gpsPoints.length;
+    fetchAntennas().then(({ antennas }) => {
+      const matches = antennas.filter((a: AntennaRow) => a.pci === cellInfo.PCI);
+      if (matches.length === 0) { setMatchedAntenna(null); return; }
+      let best = matches[0];
+      let bestDist = haversineM(avgLat, avgLon, best.lat, best.lon);
+      for (const ant of matches.slice(1)) {
+        const d = haversineM(avgLat, avgLon, ant.lat, ant.lon);
+        if (d < bestDist) { bestDist = d; best = ant; }
+      }
+      setMatchedAntenna({ lat: best.lat, lon: best.lon, cellName: best.cellName, distanceM: bestDist });
+    }).catch(() => setMatchedAntenna(null));
+  }, [cellInfo, radioValues, call.region]);
 
   const activeRadioValues = useMemo(() => {
     if (call.callMode === "CS") return selectedLteSide === "B" ? bSideGsmValues : gsmValues;
@@ -232,6 +308,38 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
       animate={{ opacity: 1, x: 0 }}
       className="space-y-2"
     >
+      {/* Cell Info Overlay — εμφανίζεται μόνο σε LTE mode */}
+      {cellInfo && cellInfo.eNBId !== null && (
+        <div className="fixed bottom-4 right-4 z-50 bg-card border border-border rounded-lg px-3 py-2 shadow-lg text-[11px] font-mono">
+          <div className="text-muted-foreground text-[9px] uppercase font-semibold mb-1 tracking-wide">Serving Cell</div>
+          <div className="flex flex-col gap-0.5">
+            <div className="flex gap-2">
+              <span className="text-muted-foreground">eNBId</span>
+              <span className="text-foreground font-bold">{cellInfo.eNBId}</span>
+            </div>
+            <div className="flex gap-2">
+              <span className="text-muted-foreground">EARFCN</span>
+              <span className="text-primary font-bold">{cellInfo.EARFCN}</span>
+            </div>
+            <div className="flex gap-2">
+              <span className="text-muted-foreground">PCI</span>
+              <span className="text-accent font-bold">{cellInfo.PCI}</span>
+            </div>
+            {matchedAntenna && (
+              <div className="mt-1 pt-1 border-t border-border/50 flex flex-col gap-0.5">
+                <div className="flex gap-2">
+                  <span className="text-muted-foreground">Dist</span>
+                  <span className="text-yellow-400 font-bold">{fmtDist(matchedAntenna.distanceM)}</span>
+                </div>
+                {matchedAntenna.cellName && (
+                  <div className="text-[9px] text-muted-foreground truncate max-w-[120px]">{matchedAntenna.cellName}</div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Top Controls (Back button, Metrics inline & Status) */}
       <div className="flex flex-wrap md:flex-nowrap items-center justify-between gap-2 bg-card border border-border rounded-lg px-2 py-1">
         <button
@@ -452,7 +560,9 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
               <Activity className="h-3 w-3 text-primary" />
               {isGSMMode ? "GSM (RxLev / RxQual)" : "LTE (RSRP / RSRQ)"}
             </h3>
-            <div className="h-[180px] w-full">
+            <div className="flex gap-2 h-[180px]">
+            {/* Chart — 3/4 */}
+            <div className="h-full" style={{ flex: 3 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={chartData} margin={{ top: 5, right: 0, left: 0, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" opacity={0.2} vertical={false} />
@@ -506,6 +616,68 @@ const CallDetail = ({ call, database, onBack }: CallDetailProps) => {
                 </LineChart>
               </ResponsiveContainer>
             </div>
+            {/* Map — 1/4 */}
+            {(() => {
+              const mapPts = activeRadioValues
+                .filter((v: any) => v.Latitude != null && v.Longitude != null)
+                .map((v: any) => ({
+                  pos: [Number(v.Latitude), Number(v.Longitude)] as [number, number],
+                  color: isGSMMode ? rxLevColor(v.RxLevSub) : rsrpColor(v.RSRP),
+                }));
+              if (mapPts.length === 0) return (
+                <div className="h-full rounded border border-border/50 bg-muted/30 flex items-center justify-center" style={{ flex: 1 }}>
+                  <span className="text-[10px] text-muted-foreground">Χωρίς GPS</span>
+                </div>
+              );
+              return (
+                <div className="h-full rounded overflow-hidden border border-border/50" style={{ flex: 1 }}>
+                  <MapContainer
+                    center={mapPts[0].pos}
+                    zoom={13}
+                    style={{ height: "100%", width: "100%" }}
+                    zoomControl={false}
+                    attributionControl={false}
+                  >
+                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                    <MapAutoFit points={mapPts.map(p => p.pos)} />
+                    {mapPts.map((pt, i) => (
+                      <CircleMarker
+                        key={i}
+                        center={pt.pos}
+                        radius={3}
+                        fillColor={pt.color}
+                        color={pt.color}
+                        fillOpacity={0.85}
+                        weight={0}
+                      />
+                    ))}
+                    {matchedAntenna && (
+                      <>
+                        <Polyline
+                          positions={[
+                            mapPts[mapPts.length - 1].pos,
+                            [matchedAntenna.lat, matchedAntenna.lon],
+                          ]}
+                          color="#facc15"
+                          weight={1.5}
+                          dashArray="6 5"
+                          opacity={0.8}
+                        />
+                        <CircleMarker
+                          center={[matchedAntenna.lat, matchedAntenna.lon]}
+                          radius={7}
+                          fillColor="#facc15"
+                          color="#92400e"
+                          fillOpacity={1}
+                          weight={2}
+                        />
+                      </>
+                    )}
+                  </MapContainer>
+                </div>
+              );
+            })()}
+          </div>
           </div>
         )}
       </div>
